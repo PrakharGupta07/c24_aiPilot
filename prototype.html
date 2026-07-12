@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AI Conversion Co-Pilot — Working Prototype</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+<style>
+:root{
+  --navy:#0e1b33;
+  --navy2:#16274a;
+  --blue:#2a4fd6;
+  --orange:#f2811f;
+  --bg:#f4f6fb;
+  --card:#ffffff;
+  --line:#e2e6f0;
+  --text:#1b2438;
+  --muted:#6b7488;
+  --good:#1c8a52;
+  --warn:#c9950c;
+  --bad:#c93030;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
+header{background:var(--navy);color:#fff;padding:22px 32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+header .brand{display:flex;align-items:center;gap:14px;}
+header .logo{width:38px;height:38px;border-radius:9px;background:var(--blue);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;}
+header h1{font-size:19px;margin:0;}
+header p{margin:2px 0 0;font-size:12.5px;color:#aab4cc;}
+nav{display:flex;gap:4px;background:var(--navy2);padding:0 32px;overflow-x:auto;}
+nav button{background:none;border:none;color:#c4cbe0;padding:13px 16px;font-size:13.5px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;font-weight:600;}
+nav button.active{color:#fff;border-bottom-color:var(--orange);}
+nav button:hover{color:#fff;}
+main{max-width:1280px;margin:0 auto;padding:24px 28px 60px;}
+.tab{display:none;}
+.tab.active{display:block;animation:fade .2s ease;}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+h2{font-size:20px;margin:0 0 4px;}
+.sub{color:var(--muted);font-size:13.5px;margin:0 0 20px;}
+.tag{display:inline-block;background:#eef1fb;color:var(--blue);font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:3px 9px;border-radius:20px;margin-bottom:10px;}
+.grid{display:grid;gap:16px;}
+.g4{grid-template-columns:repeat(4,1fr);}
+.g3{grid-template-columns:repeat(3,1fr);}
+.g2{grid-template-columns:repeat(2,1fr);}
+@media(max-width:900px){.g4,.g3,.g2{grid-template-columns:1fr 1fr;}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;}
+.kpi .num{font-size:28px;font-weight:800;color:var(--navy);}
+.kpi .label{font-size:12px;color:var(--muted);margin-top:2px;}
+.kpi .target{font-size:11.5px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);color:var(--muted);}
+.badge{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:700;}
+.badge.good{background:#e6f6ec;color:var(--good);}
+.badge.warn{background:#fdf3dd;color:var(--warn);}
+.badge.bad{background:#fbe8e8;color:var(--bad);}
+.funnel{display:flex;gap:6px;align-items:stretch;margin:18px 0;}
+.funnel .stage{flex:1;background:var(--blue);color:#fff;border-radius:8px;padding:14px 10px;text-align:center;position:relative;}
+.funnel .stage:nth-child(1){background:#2a4fd6;}
+.funnel .stage:nth-child(2){background:#16274a;}
+.funnel .stage:nth-child(3){background:#2a4fd6;}
+.funnel .stage:nth-child(4){background:#16274a;}
+.funnel .stage:nth-child(5){background:#2a4fd6;}
+.funnel .stage .n{font-size:20px;font-weight:800;}
+.funnel .stage .l{font-size:11px;opacity:.85;margin-top:2px;}
+.funnel .gap{font-size:10.5px;color:var(--bad);text-align:center;margin-top:4px;font-weight:700;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);}
+th{color:var(--muted);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.02em;}
+.persona-card{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--card);}
+.persona-card.emergent{border:1.5px dashed var(--orange);background:#fffaf3;}
+.flow-box{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#fff;}
+.flow-arrow{text-align:center;color:var(--muted);font-size:18px;margin:2px 0;}
+.flow-chip{display:inline-block;background:#eef1fb;color:var(--navy);border-radius:8px;padding:6px 10px;font-size:12px;margin:3px;font-weight:600;}
+.flow-split{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.msg-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;}
+.msg-card .chan{font-weight:800;color:var(--navy);font-size:13px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;}
+.msg-card pre{white-space:pre-wrap;background:#f9fafd;border-radius:6px;padding:8px 10px;font-size:11.5px;color:var(--muted);margin:6px 0;font-family:inherit;}
+.msg-card .output{background:#eef8f1;border-left:3px solid var(--good);border-radius:6px;padding:8px 10px;font-size:13px;margin-top:6px;}
+.msg-card .error{background:#fbe8e8;border-left:3px solid var(--bad);border-radius:6px;padding:8px 10px;font-size:12px;margin-top:6px;color:var(--bad);}
+.key-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+.key-row input,.key-row select{flex:0 0 auto;}
+.key-row input[type=password],.key-row input[type=text]{width:220px;}
+.persona-card h3{margin:2px 0 6px;font-size:16px;color:var(--navy);}
+.persona-card .meta{font-size:11.5px;color:var(--muted);margin-bottom:8px;}
+.persona-card p{font-size:13px;line-height:1.5;margin:6px 0;}
+.persona-card .playbook{background:#eef1fb;border-radius:8px;padding:8px 10px;font-size:12.5px;margin-top:8px;}
+.persona-card .playbook b{color:var(--blue);}
+select,input,button.btn{font-family:inherit;font-size:13.5px;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;}
+button.btn{background:var(--blue);color:#fff;border:none;cursor:pointer;font-weight:700;}
+button.btn:hover{background:#1f3fb8;}
+button.btn.secondary{background:var(--orange);}
+button.btn.secondary:hover{background:#d66e0f;}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;}
+.driver-bar{height:8px;border-radius:6px;background:#eef1fb;overflow:hidden;margin-top:4px;}
+.driver-bar .fill{height:100%;background:var(--blue);}
+.driver-bar .fill.neg{background:var(--bad);}
+.gauge-wrap{display:flex;align-items:center;gap:14px;}
+.gauge{width:70px;height:70px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:#fff;background:conic-gradient(var(--blue) calc(var(--pct)*1%), #e2e6f0 0);}
+.gauge span{background:#fff;color:var(--navy);width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;}
+.match-row{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--line);}
+.match-row:last-child{border-bottom:none;}
+.match-row .title{font-weight:700;font-size:13.5px;}
+.match-row .rationale{font-size:12px;color:var(--muted);margin-top:3px;}
+.match-row .price{font-weight:800;color:var(--navy);white-space:nowrap;}
+.brief-block{background:#f9fafd;border-left:3px solid var(--orange);border-radius:6px;padding:10px 12px;margin:8px 0;font-size:13px;}
+.brief-block b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--orange);margin-bottom:3px;}
+.arch-layer{border-radius:10px;padding:14px 16px;color:#fff;margin-bottom:8px;}
+.arch-layer b{display:block;font-size:14px;margin-bottom:2px;}
+.arch-layer span{font-size:12.5px;opacity:.9;}
+footer{text-align:center;color:var(--muted);font-size:11.5px;padding:20px;}
+.note{background:#fff8ec;border:1px solid #f0dba8;color:#7a5b0a;border-radius:10px;padding:12px 14px;font-size:12.5px;margin-bottom:18px;}
+canvas{max-height:280px;}
+.small-muted{font-size:11.5px;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">C24</div>
+    <div>
+      <h1>AI Conversion Co-Pilot — Working Prototype</h1>
+      <p>Discovery → Test Drive · live pipeline running on synthetic data in your browser</p>
+    </div>
+  </div>
+  <div class="small-muted" style="color:#aab4cc">Prakhar Gupta · Cars24 proposal</div>
+</header>
+
+<nav id="tabs">
+  <button data-tab="overview" class="active">Overview / Funnel</button>
+  <button data-tab="dataflow">Data Flow &amp; Segmentation</button>
+  <button data-tab="personas">Persona Explorer</button>
+  <button data-tab="sales">Sales Panel (RM view)</button>
+  <button data-tab="messages">Message Generation (GPT)</button>
+  <button data-tab="bandit">Adaptive Engagement</button>
+  <button data-tab="arch">How It's Built</button>
+</nav>
+
+<main>
+
+<div class="note">This is a functioning simulation, not a claim about real Cars24 data. It generates synthetic stand-ins for the six production tables (user_events, crm_leads, engagement_log, car_catalog, call_log, order_data), then runs the same class of models the proposal specifies — k-means/HDBSCAN-style clustering, a logistic propensity model with SHAP-style drivers, cosine-similarity matching, and a contextual bandit — for real, live, in this page. Reload to regenerate a fresh synthetic population.</div>
+
+<div id="tab-overview" class="tab active"></div>
+<div id="tab-dataflow" class="tab"></div>
+<div id="tab-personas" class="tab"></div>
+<div id="tab-sales" class="tab"></div>
+<div id="tab-messages" class="tab"></div>
+<div id="tab-bandit" class="tab"></div>
+<div id="tab-arch" class="tab"></div>
+
+</main>
+<footer>AI Conversion Co-Pilot Prototype · synthetic data, client-side models · built for review, not production</footer>
+
+<script>
+/* ============ RNG ============ */
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+var rand = mulberry32(20260707);
+function randn(mean, sd){
+  var u1 = Math.max(rand(), 1e-9), u2 = rand();
+  var z = Math.sqrt(-2*Math.log(u1)) * Math.cos(2*Math.PI*u2);
+  return mean + z*sd;
+}
+function clamp(v,lo,hi){ return Math.max(lo, Math.min(hi, v)); }
+function pick(arr){ return arr[Math.floor(rand()*arr.length)]; }
+function pickWeighted(arr, weights){
+  var total = weights.reduce((a,b)=>a+b,0);
+  var r = rand()*total, acc=0;
+  for(var i=0;i<arr.length;i++){ acc += weights[i]; if(r<=acc) return arr[i]; }
+  return arr[arr.length-1];
+}
+function round1(x){ return Math.round(x*10)/10; }
+
+/* ============ CONSTANTS ============ */
+var BODY_TYPES = ['Hatchback','Sedan','SUV','MUV'];
+var FUEL_TYPES = ['Petrol','Diesel','CNG','EV'];
+var BUDGET_BANDS = ['Under 5L','5-8L','8-12L','12L+'];
+var BUDGET_RANGE = {'Under 5L':[2.0,5.0],'5-8L':[5.0,8.0],'8-12L':[8.0,12.0],'12L+':[12.0,20.0]};
+var CITY_TIERS = [1,2,3];
+var MAKES = [
+  {name:'Maruti Suzuki', prestige:0.5},
+  {name:'Hyundai', prestige:0.62},
+  {name:'Honda', prestige:0.65},
+  {name:'Tata', prestige:0.52},
+  {name:'Mahindra', prestige:0.55},
+  {name:'Toyota', prestige:0.8},
+  {name:'Kia', prestige:0.78},
+  {name:'Volkswagen', prestige:0.75},
+  {name:'Ford', prestige:0.6},
+  {name:'Renault', prestige:0.5}
+];
+var MODEL_NAMES = ['Swift','Baleno','Creta','Verna','City','Amaze','Nexon','Punch','XUV300','Scorpio','Innova','Fortuner','Seltos','Sonet','Taigun','Virtus','EcoSport','Figo','Triber','Kwid'];
+var VARIANTS = ['Base','Mid','Top'];
+
+/* ============ SEGMENT DEFINITIONS (latent, used only to generate believable synthetic behavior) ============ */
+var SEGMENTS = [
+  { key:'anxious', n:82,
+    session_count_30d:[14,4], avg_dwell_time_per_listing_sec:[90,20], distinct_filters_used_30d:[7,2],
+    emi_calculator_open_count:[9,3], price_band_variance:[0.7,0.15], shortlist_to_session_ratio:[0.12,0.05],
+    days_since_last_active:[3,2], trade_in_prob:0.05, sort_by_price_pct:[0.3,0.15] },
+  { key:'loyalist', n:80,
+    session_count_30d:[6,2], avg_dwell_time_per_listing_sec:[60,15], distinct_filters_used_30d:[3,1],
+    emi_calculator_open_count:[2,1], price_band_variance:[0.15,0.08], shortlist_to_session_ratio:[0.55,0.15],
+    days_since_last_active:[1.5,1], trade_in_prob:0.85, sort_by_price_pct:[0.2,0.1] },
+  { key:'dealhunter', n:84,
+    session_count_30d:[10,3], avg_dwell_time_per_listing_sec:[35,10], distinct_filters_used_30d:[4,1.5],
+    emi_calculator_open_count:[6,2], price_band_variance:[0.35,0.15], shortlist_to_session_ratio:[0.25,0.1],
+    days_since_last_active:[4,2], trade_in_prob:0.05, sort_by_price_pct:[0.85,0.1] },
+  { key:'researcher', n:78,
+    session_count_30d:[11,3], avg_dwell_time_per_listing_sec:[140,30], distinct_filters_used_30d:[8,2],
+    emi_calculator_open_count:[2,1], price_band_variance:[0.25,0.1], shortlist_to_session_ratio:[0.35,0.12],
+    days_since_last_active:[2.5,1.5], trade_in_prob:0.05, sort_by_price_pct:[0.15,0.1] }
+];
+var FEATURE_KEYS = ['session_count_30d','avg_dwell_time_per_listing_sec','distinct_filters_used_30d',
+  'emi_calculator_open_count','price_band_variance','shortlist_to_session_ratio','days_since_last_active',
+  'trade_in_flag','sort_by_price_pct'];
+
+/* ============ DATA GENERATION ============ */
+function makeUserFromSegment(seg, uid){
+  var u = { user_id: 'U'+uid, true_segment: seg.key };
+  u.session_count_30d = Math.max(1, Math.round(randn(seg.session_count_30d[0], seg.session_count_30d[1])));
+  u.avg_dwell_time_per_listing_sec = Math.max(5, round1(randn(seg.avg_dwell_time_per_listing_sec[0], seg.avg_dwell_time_per_listing_sec[1])));
+  u.distinct_filters_used_30d = Math.max(0, Math.round(randn(seg.distinct_filters_used_30d[0], seg.distinct_filters_used_30d[1])));
+  u.emi_calculator_open_count = Math.max(0, Math.round(randn(seg.emi_calculator_open_count[0], seg.emi_calculator_open_count[1])));
+  u.price_band_variance = clamp(randn(seg.price_band_variance[0], seg.price_band_variance[1]), 0, 1);
+  u.shortlist_to_session_ratio = clamp(randn(seg.shortlist_to_session_ratio[0], seg.shortlist_to_session_ratio[1]), 0, 1);
+  u.days_since_last_active = Math.max(0, round1(randn(seg.days_since_last_active[0], seg.days_since_last_active[1])));
+  u.trade_in_flag = rand() < seg.trade_in_prob ? 1 : 0;
+  u.sort_by_price_pct = clamp(randn(seg.sort_by_price_pct[0], seg.sort_by_price_pct[1]), 0, 1);
+  u.preferred_body_type = pick(BODY_TYPES);
+  u.preferred_fuel_type = pick(FUEL_TYPES);
+  u.declared_budget_band = pick(BUDGET_BANDS);
+  u.city_tier = pick(CITY_TIERS);
+  u.wants_sunroof = rand() < (seg.key==='researcher' ? 0.55 : 0.25);
+  u.wants_automatic = rand() < (seg.key==='researcher' ? 0.4 : 0.2);
+  u.rm_id = 'RM'+(1+Math.floor(rand()*6));
+  return u;
+}
+
+// funnel stage + labels, driven by a latent propensity signal + noise (kept separate from features model will learn)
+function labelFunnel(u){
+  var z = -1.3
+    + 2.4*(u.shortlist_to_session_ratio)
+    - 0.12*(u.days_since_last_active)
+    + 1.1*(u.trade_in_flag)
+    + 0.35*(u.distinct_filters_used_30d/10)
+    - 0.9*(u.price_band_variance)
+    + randn(0,0.5);
+  var p = 1/(1+Math.exp(-z));
+  u.test_drive_booked_7d = rand() < p ? 1 : 0;
+  u.reached_shortlist = (u.shortlist_to_session_ratio > 0.08 || rand()<0.3) ? 1 : (rand()<0.15?1:0);
+  u.test_drive_completed = u.test_drive_booked_7d && rand() < 0.72 ? 1 : 0;
+  u.purchased = u.test_drive_completed && rand() < 0.46 ? 1 : 0;
+  u.opted_out = rand() < 0.04 ? 1 : 0;
+  return u;
+}
+
+function generateUsers(){
+  var users = []; var uid = 1000;
+  SEGMENTS.forEach(function(seg){
+    for(var i=0;i<seg.n;i++){ uid++; users.push(makeUserFromSegment(seg, uid)); }
+  });
+  users.forEach(labelFunnel);
+  return users;
+}
+
+// A brand-new latent behavior pattern, not one of the four SEGMENTS above --
+// used to demonstrate new-segment discovery. Deliberately mixes signals
+// (high financing anxiety + high research depth + very recent activity)
+// that don't cleanly match any of the four known playbook templates.
+var NEW_WAVE_SEGMENT = {
+  key:'nightowl_ev', n:70,
+  session_count_30d:[9,3], avg_dwell_time_per_listing_sec:[80,18], distinct_filters_used_30d:[6,2],
+  emi_calculator_open_count:[8,2.5], price_band_variance:[0.55,0.15], shortlist_to_session_ratio:[0.18,0.07],
+  days_since_last_active:[0.7,0.5], trade_in_prob:0.5, sort_by_price_pct:[0.45,0.15]
+};
+
+function injectNewBehaviorWave(){
+  var startUid = 9000 + Math.floor(rand()*500);
+  var newIds = [];
+  for(var i=0;i<NEW_WAVE_SEGMENT.n;i++){
+    var u = makeUserFromSegment(NEW_WAVE_SEGMENT, startUid+i);
+    labelFunnel(u);
+    APP.users.push(u);
+    newIds.push(u.user_id);
+  }
+  return newIds;
+}
+
+function generateCars(){
+  var cars = []; var cid=500;
+  for(var i=0;i<150;i++){
+    cid++;
+    var make = pick(MAKES);
+    var body_type = pick(BODY_TYPES);
+    var fuel_type = pickWeighted(FUEL_TYPES,[0.45,0.32,0.15,0.08]);
+    var variant = pick(VARIANTS);
+    var year = 2015 + Math.floor(rand()*9);
+    var age = 2024 - year;
+    var km_driven = Math.round(clamp(randn(45000,25000),3000,150000));
+    var price = round1(clamp(randn(7.5,3.2),1.8,22));
+    var number_of_owners = pickWeighted([1,2,3],[0.55,0.33,0.12]);
+    var service_history_flag = rand() < 0.68 ? 1 : 0;
+    var damage_flags = pickWeighted([0,1,2,3],[0.5,0.28,0.15,0.07]);
+    var sunroof = variant==='Top' ? rand()<0.7 : rand()<0.15;
+    var automatic = variant==='Top' ? rand()<0.5 : rand()<0.15;
+    var safety_rating = clamp(Math.round(randn(variant==='Top'?4:3,1)),1,5);
+    var condition_score = clamp(
+      100 - damage_flags*12 - (number_of_owners-1)*8 - Math.max(0,(km_driven-40000))/2000 - age*1.5 + service_history_flag*10,
+      5, 100);
+    cars.push({
+      car_id:'C'+cid, make:make.name, model:pick(MODEL_NAMES), variant:variant,
+      body_type:body_type, fuel_type:fuel_type, price:price, km_driven:km_driven, year:year,
+      number_of_owners:number_of_owners, service_history_flag:service_history_flag,
+      damage_flags:damage_flags, sunroof:sunroof, automatic:automatic, safety_rating:safety_rating,
+      brand_prestige_score:make.prestige, condition_score:Math.round(condition_score)
+    });
+  }
+  return cars;
+}
+
+function conditionSummary(car){
+  var s = car.condition_score;
+  var bucket = s>=85?'excellent':(s>=70?'good':(s>=50?'fair':'needs attention'));
+  var openers = {
+    excellent:"One of the cleanest examples in this segment — ",
+    good:"Solid, dependable condition overall — ",
+    fair:"Fair condition with a couple of things worth flagging — ",
+    'needs attention':"Higher mileage/wear car, priced accordingly — "
+  };
+  var mid = car.service_history_flag ? "full service history on record, " : "no verified service history, ";
+  var owners = car.number_of_owners===1 ? "single owner." : (car.number_of_owners+" owners.");
+  var dmg = car.damage_flags===0 ? " No panel damage flagged." : (" "+car.damage_flags+" minor panel issue"+(car.damage_flags>1?'s':'')+" flagged in inspection.");
+  return openers[bucket] + mid + owners + dmg;
+}
+
+/* ============ USER PERSONA ENGINE: standardize -> k-means -> logistic propensity + linear-SHAP drivers ============ */
+function standardizeMatrix(users, keys){
+  var means = keys.map(function(k){ return users.reduce((a,u)=>a+u[k],0)/users.length; });
+  var sds = keys.map(function(k,i){
+    var v = users.reduce((a,u)=>a+Math.pow(u[k]-means[i],2),0)/users.length;
+    return Math.sqrt(v)||1;
+  });
+  var X = users.map(function(u){
+    return keys.map(function(k,i){ return (u[k]-means[i])/sds[i]; });
+  });
+  return {X:X, means:means, sds:sds};
+}
+
+function kmeans(X, k, iters){
+  var n = X.length, d = X[0].length;
+  var idx = [];
+  while(idx.length<k){ var r=Math.floor(rand()*n); if(idx.indexOf(r)===-1) idx.push(r); }
+  var centroids = idx.map(function(i){ return X[i].slice(); });
+  var assign = new Array(n).fill(0);
+  for(var it=0; it<iters; it++){
+    for(var i=0;i<n;i++){
+      var best=0, bestD=Infinity;
+      for(var c=0;c<k;c++){
+        var dist=0;
+        for(var j=0;j<d;j++){ var diff=X[i][j]-centroids[c][j]; dist+=diff*diff; }
+        if(dist<bestD){ bestD=dist; best=c; }
+      }
+      assign[i]=best;
+    }
+    var sums = Array.from({length:k},()=>new Array(d).fill(0));
+    var counts = new Array(k).fill(0);
+    for(var i2=0;i2<n;i2++){
+      counts[assign[i2]]++;
+      for(var j2=0;j2<d;j2++) sums[assign[i2]][j2]+=X[i2][j2];
+    }
+    for(var c2=0;c2<k;c2++){
+      if(counts[c2]===0){
+        centroids[c2] = X[Math.floor(rand()*n)].slice();
+      } else {
+        for(var j3=0;j3<d;j3++) centroids[c2][j3]=sums[c2][j3]/counts[c2];
+      }
+    }
+  }
+  return {assign:assign, centroids:centroids};
+}
+
+function sigmoid(z){ return 1/(1+Math.exp(-z)); }
+
+function trainLogistic(X, y, lr, iters){
+  var n=X.length, d=X[0].length;
+  var w = new Array(d).fill(0), b=0;
+  for(var it=0; it<iters; it++){
+    var gw = new Array(d).fill(0), gb=0;
+    for(var i=0;i<n;i++){
+      var z=b; for(var j=0;j<d;j++) z+=w[j]*X[i][j];
+      var pred=sigmoid(z);
+      var err=pred-y[i];
+      for(var j2=0;j2<d;j2++) gw[j2]+=err*X[i][j2];
+      gb+=err;
+    }
+    for(var j3=0;j3<d;j3++) w[j3]-= lr*gw[j3]/n;
+    b -= lr*gb/n;
+  }
+  return {w:w,b:b};
+}
+
+function auc(scores, labels){
+  var pairs = scores.map((s,i)=>({s:s,y:labels[i]}));
+  var pos = pairs.filter(p=>p.y===1), neg = pairs.filter(p=>p.y===0);
+  if(pos.length===0||neg.length===0) return 0.5;
+  var wins=0, total=0;
+  // sample-limited pairwise comparison for performance
+  var sampleNeg = neg.length>400 ? neg.filter(()=>rand()<400/neg.length) : neg;
+  pos.forEach(function(p){
+    sampleNeg.forEach(function(ngv){
+      total++;
+      if(p.s>ngv.s) wins++; else if(p.s===ngv.s) wins+=0.5;
+    });
+  });
+  return total? wins/total : 0.5;
+}
+
+var DRIVER_LABELS = {
+  session_count_30d:{pos:'High browsing volume this month', neg:'Low browsing volume this month'},
+  avg_dwell_time_per_listing_sec:{pos:'Spends a long time per listing (careful reader)', neg:'Skims listings quickly'},
+  distinct_filters_used_30d:{pos:'Uses many filters — knows what they want', neg:'Uses very few filters'},
+  emi_calculator_open_count:{pos:'Opens the EMI calculator often (affordability anxiety)', neg:'Rarely checks EMI/financing'},
+  price_band_variance:{pos:'Browsing a wide, unfocused price range', neg:'Browsing a narrow, focused price range'},
+  shortlist_to_session_ratio:{pos:'Shortlists a high share of what they view', neg:'Rarely shortlists what they view'},
+  days_since_last_active:{pos:'Has been inactive for a while', neg:'Active very recently'},
+  trade_in_flag:{pos:'Currently listing a car to trade in', neg:'Not in a trade-in flow'},
+  sort_by_price_pct:{pos:'Consistently sorts listings by price', neg:'Rarely sorts by price'}
+};
+
+function runUserPersonaEngine(users, k){
+  k = k || 4;
+  var std = standardizeMatrix(users, FEATURE_KEYS);
+  var X = std.X;
+  var km = kmeans(X, k, 25);
+  users.forEach(function(u,i){ u.cluster = km.assign[i]; });
+
+  // time-style split: order by days_since_last_active desc as proxy for "older" rows, train on first 70%
+  var order = users.map((u,i)=>i).sort((a,b)=> a - b); // arbitrary stable order acts as pseudo-time
+  var splitAt = Math.floor(users.length*0.7);
+  var trainIdx = order.slice(0,splitAt), testIdx = order.slice(splitAt);
+  var Xtrain = trainIdx.map(i=>X[i]), ytrain = trainIdx.map(i=>users[i].test_drive_booked_7d);
+  var Xtest = testIdx.map(i=>X[i]), ytest = testIdx.map(i=>users[i].test_drive_booked_7d);
+
+  var model = trainLogistic(Xtrain, ytrain, 0.4, 400);
+
+  function scoreRow(xrow){
+    var z = model.b; for(var j=0;j<xrow.length;j++) z += model.w[j]*xrow[j];
+    return sigmoid(z);
+  }
+  var testScores = Xtest.map(scoreRow);
+  var modelAuc = auc(testScores, ytest);
+
+  users.forEach(function(u,i){
+    var xrow = X[i];
+    var p = scoreRow(xrow);
+    u.propensity_score = p;
+    var contribs = FEATURE_KEYS.map(function(k,j){ return {key:k, val: model.w[j]*xrow[j]}; });
+    contribs.sort(function(a,b){ return Math.abs(b.val)-Math.abs(a.val); });
+    u.top_drivers = contribs.slice(0,3).map(function(c){
+      var dir = c.val>=0 ? 'pos':'neg';
+      return { label: DRIVER_LABELS[c.key][dir], weight: Math.abs(c.val), positive: c.val>=0 };
+    });
+  });
+
+  return { centroids: km.centroids, means: std.means, sds: std.sds, auc: modelAuc, coef: model.w };
+}
+
+/* ============ PERSONA CARD GENERATION AGENT (template-driven "LLM" translation of cluster stats) ============ */
+var PERSONA_WEIGHT_VECTORS = {
+  anxious:    [ 1,   0,   1,  1.5,  1, -1.5,  0, -1,    0],
+  loyalist:   [-1,   0,  -1,   -1, -1.5, 1.5, -0.5, 2, -0.5],
+  dealhunter: [ 0,  -1, -0.5,   1,  0, -0.5,  0, -1,    2],
+  researcher: [ 0,   2,  1.5,  -1,  0,    0,  0, -1,   -1]
+};
+var PERSONA_META = {
+  anxious:{ icon:'🧭', name:'First-Car Anxious Explorer',
+    describe:function(s){ return "Usually a first-time buyer. Browses a lot ("+s.session_count_30d.toFixed(1)+" sessions/30d), opens the EMI calculator on almost every listing ("+s.emi_calculator_open_count.toFixed(1)+"x avg), but rarely shortlists ("+(s.shortlist_to_session_ratio*100).toFixed(0)+"% of sessions). High activity, low commitment is the tell."; },
+    playbook:"Lead with reassurance, not more choice — simple financing math and an easy-to-read condition report. Brief the RM to slow down rather than push for a booking." },
+  loyalist:{ icon:'🔄', name:'The Upgrade Loyalist',
+    describe:function(s){ return "Already active in the sell-your-car flow, trading in rather than starting fresh. Search is narrow ("+s.distinct_filters_used_30d.toFixed(1)+" filters avg) and specific, with a high shortlist rate ("+(s.shortlist_to_session_ratio*100).toFixed(0)+"%) — they already know roughly what they want."; },
+    playbook:"Fast-track the test drive and bundle the trade-in value into the new offer. This buyer already trusts the platform; just make the numbers land quickly." },
+  dealhunter:{ icon:'🔎', name:'The Deal Hunter',
+    describe:function(s){ return "Sorts everything by price ("+(s.sort_by_price_pct*100).toFixed(0)+"% of sessions), skims a lot without reading closely (avg dwell "+s.avg_dwell_time_per_listing_sec.toFixed(0)+"s/listing), and tends to drop off near a consistent price ceiling."; },
+    playbook:"Pitch a financing or discount nudge right at their estimated price ceiling — not a generic offer — plus urgency messaging if a comparable car's price moves." },
+  researcher:{ icon:'📋', name:'The Feature-Focused Researcher',
+    describe:function(s){ return "Already knows the body type, still deciding on trim. Spends real time comparing specs (avg dwell "+s.avg_dwell_time_per_listing_sec.toFixed(0)+"s/listing) and filters hard on things like sunroof or safety rating ("+s.distinct_filters_used_30d.toFixed(1)+" filters avg)."; },
+    playbook:"Lead with feature-rich content; brief the RM on exactly what they keep filtering for so the call opens with that, not price." }
+};
+
+// Generic trait phrases + name fragments used to describe a cluster that does
+// NOT match one of the four known playbook templates -- this is what lets the
+// system name/describe a genuinely new segment instead of forcing it into an
+// existing box. Keyed the same as FEATURE_KEYS, {pos: high-side, neg: low-side}.
+var TRAIT_PHRASES = {
+  session_count_30d:{pos:'browses unusually often', neg:'browses only occasionally'},
+  avg_dwell_time_per_listing_sec:{pos:'spends a long time on each listing', neg:'moves through listings quickly'},
+  distinct_filters_used_30d:{pos:'filters hard on specific features', neg:'barely uses filters'},
+  emi_calculator_open_count:{pos:'checks EMI/financing constantly', neg:'rarely checks financing'},
+  price_band_variance:{pos:'browses a wide, unfocused price range', neg:'stays in a narrow price range'},
+  shortlist_to_session_ratio:{pos:'shortlists a high share of what it sees', neg:'rarely shortlists anything'},
+  days_since_last_active:{pos:'has gone quiet recently', neg:'is active right now'},
+  trade_in_flag:{pos:'is mid trade-in', neg:"isn't trading anything in"},
+  sort_by_price_pct:{pos:'sorts almost everything by price', neg:'rarely sorts by price'}
+};
+var TRAIT_NAME_FRAGMENTS = {
+  session_count_30d:{pos:'Heavy Browser', neg:'Light Browser'},
+  avg_dwell_time_per_listing_sec:{pos:'Deep Researcher', neg:'Quick Skimmer'},
+  distinct_filters_used_30d:{pos:'Power Filterer', neg:'Filter-Light Shopper'},
+  emi_calculator_open_count:{pos:'Finance-Conscious Shopper', neg:'Cash-Confident Shopper'},
+  price_band_variance:{pos:'Wide-Net Shopper', neg:'Focused-Range Shopper'},
+  shortlist_to_session_ratio:{pos:'Decisive Shortlister', neg:'Cautious Browser'},
+  days_since_last_active:{pos:'Dormant Reviver', neg:'Always-On Shopper'},
+  trade_in_flag:{pos:'Trade-In Upgrader', neg:'Fresh-Start Buyer'},
+  sort_by_price_pct:{pos:'Price-First Sorter', neg:'Feature-First Sorter'}
+};
+
+function composeEmergentPersona(centroidStd, stats, clusterIdx, emergentIdx){
+  var pairs = FEATURE_KEYS.map(function(k,i){ return {k:k, z:centroidStd[i]}; });
+  pairs.sort(function(a,b){ return Math.abs(b.z)-Math.abs(a.z); });
+  var top3 = pairs.slice(0,3);
+  var phrases = top3.map(function(p){ return TRAIT_PHRASES[p.k][p.z>=0?'pos':'neg']; });
+  var top1 = top3[0];
+  var nameFragment = TRAIT_NAME_FRAGMENTS[top1.k][top1.z>=0?'pos':'neg'];
+
+  var playbook;
+  if(stats.trade_in_flag > 0.4){
+    playbook = "Behaves like a trade-in upgrade, but doesn't fully fit that playbook yet -- get a trade-in valuation ready before pitching a new car, and watch whether this segment keeps growing.";
+  } else if(stats.emi_calculator_open_count > 5 && stats.shortlist_to_session_ratio < 0.25){
+    playbook = "High financing-anxiety signal, similar to the Anxious Explorer but distinct enough to track separately -- lead with reassurance and simple EMI math until there's enough volume to justify its own send strategy.";
+  } else if(stats.sort_by_price_pct > 0.5){
+    playbook = "Price-driven behavior -- worth testing a financing or discount nudge pitched at their apparent ceiling, same as the Deal Hunter playbook, before committing to a dedicated one.";
+  } else if(stats.avg_dwell_time_per_listing_sec > 70 && stats.distinct_filters_used_30d > 5){
+    playbook = "Research-heavy, close to the Feature-Focused Researcher but with its own twist -- lead with feature-rich content and brief the RM on this segment's specific top filters.";
+  } else {
+    playbook = "Not enough signal yet to commit to a dedicated playbook -- default to condition-forward messaging and re-check this segment's shape after another two weeks of data.";
+  }
+
+  return {
+    cluster: clusterIdx, key: 'emergent_'+clusterIdx, icon: '✨',
+    name: 'New Segment: The '+nameFragment,
+    description: "Auto-discovered from recent behavior -- doesn't cleanly match any of the four known playbooks. "
+      + stats.n + " users so far, avg propensity " + Math.round(stats.avg_propensity*100) + "%. This group "
+      + phrases.join(', ') + ".",
+    playbook: playbook,
+    stats: stats,
+    emergent: true
+  };
+}
+
+function labelClusters(users, centroids, forcedEmergentClusters){
+  forcedEmergentClusters = forcedEmergentClusters || [];
+  var k = centroids.length;
+  var rawStats = [];
+  for(var c=0;c<k;c++){
+    var members = users.filter(u=>u.cluster===c);
+    var stat = {};
+    FEATURE_KEYS.forEach(function(key){
+      stat[key] = members.length ? members.reduce((a,u)=>a+u[key],0)/members.length : 0;
+    });
+    stat.n = members.length;
+    stat.avg_propensity = members.length ? members.reduce((a,u)=>a+u.propensity_score,0)/members.length : 0;
+    rawStats.push(stat);
+  }
+  // score every non-forced cluster against every template, then greedily assign
+  // best pairs -- only accept a match above a minimum score, so weak/novel
+  // clusters fall through to the emergent-segment composer instead of being
+  // force-fit into one of the four known templates.
+  var templateKeys = Object.keys(PERSONA_WEIGHT_VECTORS);
+  var scores = [];
+  for(var c2=0;c2<k;c2++){
+    if(forcedEmergentClusters.indexOf(c2)!==-1) continue;
+    templateKeys.forEach(function(tk){
+      var w = PERSONA_WEIGHT_VECTORS[tk];
+      var dot = 0;
+      centroids[c2].forEach(function(v,i){ dot += v*w[i]; });
+      scores.push({cluster:c2, template:tk, score:dot});
+    });
+  }
+  scores.sort(function(a,b){ return b.score-a.score; });
+  var usedClusters={}, usedTemplates={}, assignment={};
+  var MATCH_THRESHOLD = 1.0;
+  scores.forEach(function(s){
+    if(!usedClusters[s.cluster] && !usedTemplates[s.template] && s.score > MATCH_THRESHOLD){
+      assignment[s.cluster] = s.template;
+      usedClusters[s.cluster]=true; usedTemplates[s.template]=true;
+    }
+  });
+  var cards = [];
+  var emergentCount = 0;
+  for(var c3=0;c3<k;c3++){
+    var tk2 = assignment[c3];
+    if(tk2){
+      var meta = PERSONA_META[tk2];
+      cards.push({
+        cluster:c3, key:tk2, icon:meta.icon, name:meta.name,
+        description: meta.describe(rawStats[c3]),
+        playbook: meta.playbook,
+        stats: rawStats[c3],
+        emergent: false
+      });
+    } else {
+      emergentCount++;
+      cards.push(composeEmergentPersona(centroids[c3], rawStats[c3], c3, emergentCount));
+    }
+  }
+  return cards;
+}
+
+/* ============ MATCHING ENGINE (cosine-style weighted scoring + rationale, day-one cold-start approach) ============ */
+var PERSONA_MATCH_WEIGHTS = {
+  anxious:   { body:2.0, fuel:1.0, budget:2.5, condition:3.0, feature:1.0, prestige:0.5 },
+  loyalist:  { body:2.5, fuel:1.5, budget:1.5, condition:1.5, feature:1.0, prestige:1.0 },
+  dealhunter:{ body:1.0, fuel:1.0, budget:3.5, condition:1.0, feature:0.5, prestige:0.3 },
+  researcher:{ body:1.5, fuel:1.0, budget:1.0, condition:1.5, feature:3.0, prestige:0.8 }
+};
+
+function matchCarsForUser(user, cars, personaKey){
+  var w = PERSONA_MATCH_WEIGHTS[personaKey] || PERSONA_MATCH_WEIGHTS.anxious;
+  var range = BUDGET_RANGE[user.declared_budget_band];
+  var mid = (range[0]+range[1])/2, span = (range[1]-range[0])/2 || 1;
+
+  var scored = cars.map(function(car){
+    var bodyMatch = car.body_type===user.preferred_body_type ? 1 : 0;
+    var fuelMatch = car.fuel_type===user.preferred_fuel_type ? 1 : 0;
+    var budgetFit = clamp(1 - Math.abs(car.price-mid)/(span*1.8), 0, 1);
+    var conditionTerm = car.condition_score/100;
+    var featureWant = (user.wants_sunroof?1:0) + (user.wants_automatic?1:0) + 1; // +1 baseline for safety weighting
+    var featureHave = (user.wants_sunroof && car.sunroof ? 1:0) + (user.wants_automatic && car.automatic ? 1:0) + (car.safety_rating/5);
+    var featureScore = featureHave/featureWant;
+    var prestige = car.brand_prestige_score;
+
+    var score = w.body*bodyMatch + w.fuel*fuelMatch + w.budget*budgetFit + w.condition*conditionTerm + w.feature*featureScore + w.prestige*prestige;
+
+    var reasons = [];
+    if(bodyMatch) reasons.push("matches their preferred "+car.body_type.toLowerCase()+" body type");
+    if(fuelMatch) reasons.push(car.fuel_type+" as preferred");
+    if(budgetFit>0.7) reasons.push("comfortably within their "+user.declared_budget_band+" budget");
+    if(conditionTerm>0.8 && w.condition>=2) reasons.push("condition score of "+car.condition_score+"/100, well above the anxiety threshold");
+    if(featureScore>0.7 && w.feature>=2) reasons.push("has the features (sunroof/safety) they keep filtering for");
+    if(w.budget>=3 && budgetFit>0.8) reasons.push("priced right at what they've shown they'll pay");
+    if(reasons.length===0) reasons.push("closest overall fit among available inventory");
+
+    return { car:car, score:score, rationale: reasons.slice(0,2).join('; ') };
+  });
+  scored.sort(function(a,b){ return b.score-a.score; });
+  return scored.slice(0,3);
+}
+
+/* ============ PRE-CALL BRIEFING AGENT ============ */
+function generateBriefing(user, personaCard, matches){
+  var top = matches[0];
+  var talkingPoints = [];
+  talkingPoints.push("Persona: "+personaCard.name+" — booking propensity "+(user.propensity_score*100).toFixed(0)+"%.");
+  talkingPoints.push("Lead with the "+top.car.make+" "+top.car.model+" ("+top.car.variant+", ₹"+top.car.price+"L) — "+top.rationale+".");
+  var driverLine = user.top_drivers[0] ? user.top_drivers[0].label.toLowerCase() : "recent activity";
+  talkingPoints.push("Top signal driving this score: "+driverLine+".");
+
+  var objectionByPersona = {
+    anxious: "If they hesitate, it's almost certainly condition/affordability anxiety, not price — walk through the EMI math and the condition report line by line before pitching a second car.",
+    loyalist: "If they hesitate, it's the trade-in valuation — have the trade-in number ready and bundled into the new car's effective price before they ask.",
+    dealhunter: "If they hesitate, it's price — they have a ceiling in mind; don't counter with a different car, counter with financing or a discount at their number.",
+    researcher: "If they hesitate, it's an unconfirmed spec — have the exact feature list (sunroof/safety/trim) open before you start talking price."
+  };
+  var opening = {
+    anxious: "“I know this is a big decision — let's start with what this car actually costs you per month, not the sticker price.”",
+    loyalist: "“Good news — with your trade-in factored in, here's what the upgrade actually costs.”",
+    dealhunter: "“I pulled a couple of options right around your budget, including one with a financing offer that fits it exactly.”",
+    researcher: "“This one has the sunroof and safety rating you've been filtering for — want me to walk through the full spec sheet?”"
+  };
+
+  return {
+    talkingPoints: talkingPoints,
+    objection: objectionByPersona[personaCard.key] || objectionByPersona.anxious,
+    opening: opening[personaCard.key] || opening.anxious
+  };
+}
+
+/* ============ ADAPTIVE ENGAGEMENT: contextual (per-persona) UCB1 bandit, simulated online ============ */
+var CHANNELS = ['WhatsApp','RCS','Push'];
+var TIME_BUCKETS = ['Morning','Afternoon','Evening'];
+var ARMS = [];
+CHANNELS.forEach(function(ch){ TIME_BUCKETS.forEach(function(tb){ ARMS.push(ch+' · '+tb); }); });
+
+// hidden ground-truth reward probabilities per persona per arm (used only to sample simulated outcomes)
+var TRUE_REWARD = {
+  anxious:    {'WhatsApp · Evening':0.35, 'default':0.14},
+  loyalist:   {'Push · Morning':0.40, 'default':0.15},
+  dealhunter: {'RCS · Afternoon':0.32, 'default':0.13},
+  researcher: {'Push · Evening':0.30, 'default':0.14}
+};
+function trueReward(personaKey, arm){
+  var tbl = TRUE_REWARD[personaKey] || TRUE_REWARD.anxious;
+  var base = tbl['default'];
+  var best = Object.keys(tbl).find(k=>k!=='default');
+  return arm===best ? tbl[best] : base + (rand()*0.02-0.01);
+}
+
+function newBanditState(personaKeys){
+  var state = { rounds:0, cumReward:0, cumRewardRandom:0, history:[], byPersona:{} };
+  personaKeys.forEach(function(pk){
+    state.byPersona[pk] = { counts:{}, sums:{} };
+    ARMS.forEach(function(a){ state.byPersona[pk].counts[a]=0; state.byPersona[pk].sums[a]=0; });
+  });
+  return state;
+}
+
+function banditChooseArm(state, personaKey){
+  var p = state.byPersona[personaKey];
+  var totalForPersona = ARMS.reduce((a,arm)=>a+p.counts[arm],0);
+  // ensure every arm tried once first
+  for(var i=0;i<ARMS.length;i++){ if(p.counts[ARMS[i]]===0) return ARMS[i]; }
+  var best=null, bestScore=-Infinity;
+  ARMS.forEach(function(arm){
+    var avg = p.sums[arm]/p.counts[arm];
+    var bonus = Math.sqrt(2*Math.log(totalForPersona)/p.counts[arm]);
+    var ucb = avg+bonus;
+    if(ucb>bestScore){ bestScore=ucb; best=arm; }
+  });
+  return best;
+}
+
+function runBanditRounds(state, personaKeys, personaWeights, nRounds){
+  for(var r=0;r<nRounds;r++){
+    var pk = pickWeighted(personaKeys, personaWeights);
+    var arm = banditChooseArm(state, pk);
+    var reward = rand() < trueReward(pk, arm) ? 1 : 0;
+    state.byPersona[pk].counts[arm]++;
+    state.byPersona[pk].sums[arm]+=reward;
+    state.cumReward += reward;
+
+    var randomArm = pick(ARMS);
+    var rewardRandom = rand() < trueReward(pk, randomArm) ? 1 : 0;
+    state.cumRewardRandom += rewardRandom;
+
+    state.rounds++;
+    state.history.push({ round: state.rounds, banditRate: state.cumReward/state.rounds, randomRate: state.cumRewardRandom/state.rounds });
+  }
+  return state;
+}
+
+/* ============ RENDERING ============ */
+var APP = { users:null, cars:null, personaCards:null, personaModel:null, banditState:null, banditChart:null, k:4, lastDiscoveredCluster:null };
+
+function fmtPct(x){ return (x*100).toFixed(0)+'%'; }
+
+function kpiBadge(actual, target, higherIsBetter){
+  higherIsBetter = higherIsBetter===undefined?true:higherIsBetter;
+  var ok = higherIsBetter ? actual>=target : actual<=target;
+  return ok ? '<span class="badge good">On target</span>' : '<span class="badge warn">Tracking</span>';
+}
+
+function renderOverview(){
+  var users = APP.users;
+  var n = users.length;
+  var discovery = n;
+  var shortlist = users.filter(u=>u.reached_shortlist).length;
+  var booked = users.filter(u=>u.test_drive_booked_7d).length;
+  var completed = users.filter(u=>u.test_drive_completed).length;
+  var purchased = users.filter(u=>u.purchased).length;
+
+  var discToShort = shortlist/discovery;
+  var coverage = users.filter(u=>u.cluster!==undefined).length/n;
+  var optOut = users.filter(u=>u.opted_out).length/n;
+  var briefingAdoption = 0.74; // simulated pilot adoption stat, mirrors proposal target framing
+
+  var html = '';
+  html += '<span class="tag">Overview / Funnel</span><h2>Discovery → Purchase, on this synthetic run</h2>';
+  html += '<p class="sub">'+n+' synthetic users generated this session. Counts below come directly from the simulated funnel flags (order_data / call_log stand-ins), computed live.</p>';
+
+  html += '<div class="funnel">';
+  var stages = [['Discovery',discovery],['Shortlist',shortlist],['Test Drive Booked',booked],['Test Drive Completed',completed],['Purchase',purchased]];
+  stages.forEach(function(s){
+    html += '<div class="stage"><div class="n">'+s[1]+'</div><div class="l">'+s[0]+'</div></div>';
+  });
+  html += '</div>';
+
+  html += '<div class="grid g4" style="margin-top:18px;">';
+  html += '<div class="card kpi"><div class="num">'+fmtPct(discToShort)+'</div><div class="label">Discovery → Shortlist</div><div class="target">Target: +15–20% vs baseline &nbsp;'+kpiBadge(discToShort,0.5)+'</div></div>';
+  html += '<div class="card kpi"><div class="num">'+fmtPct(booked/discovery)+'</div><div class="label">Test-Drive Booked (North Star)</div><div class="target">Decides go/no-go &nbsp;<span class="badge good">Primary metric</span></div></div>';
+  html += '<div class="card kpi"><div class="num">'+fmtPct(coverage)+'</div><div class="label">Persona coverage</div><div class="target">Target: 80%+ of active users &nbsp;'+kpiBadge(coverage,0.8)+'</div></div>';
+  html += '<div class="card kpi"><div class="num">'+fmtPct(optOut)+'</div><div class="label">Opt-out rate</div><div class="target">Guardrail: should not go up &nbsp;'+kpiBadge(optOut,0.06,false)+'</div></div>';
+  html += '</div>';
+
+  html += '<div class="grid g3" style="margin-top:16px;">';
+  html += '<div class="card"><h3 style="margin-top:0;font-size:14px;">RM briefing adoption (pilot, simulated)</h3><div class="num" style="font-size:24px;color:var(--navy)">'+fmtPct(briefingAdoption)+'</div><div class="small-muted">Target: 70%+ in pilot pod '+kpiBadge(briefingAdoption,0.7)+'</div></div>';
+  html += '<div class="card"><h3 style="margin-top:0;font-size:14px;">Test-drive completion rate</h3><div class="num" style="font-size:24px;color:var(--navy)">'+fmtPct(completed/(booked||1))+'</div><div class="small-muted">Of those who booked, share who showed up</div></div>';
+  html += '<div class="card"><h3 style="margin-top:0;font-size:14px;">Purchase rate post test-drive</h3><div class="num" style="font-size:24px;color:var(--navy)">'+fmtPct(purchased/(completed||1))+'</div><div class="small-muted">Of completed test drives, share who bought</div></div>';
+  html += '</div>';
+
+  document.getElementById('tab-overview').innerHTML = html;
+}
+
+function renderPersonaCardHTML(card){
+  var h = '<div class="persona-card'+(card.emergent?' emergent':'')+'">';
+  h += '<h3>'+card.icon+' '+card.name+(card.emergent?' <span class="badge warn">newly discovered</span>':'')+'</h3>';
+  h += '<div class="meta">'+card.stats.n+' users in this cluster · avg propensity '+fmtPct(card.stats.avg_propensity)+'</div>';
+  h += '<p>'+card.description+'</p>';
+  h += '<div class="playbook"><b>We\'d:</b> '+card.playbook+'</div>';
+  h += '</div>';
+  return h;
+}
+
+function renderPersonas(){
+  var cards = APP.personaCards;
+  var html = '<span class="tag">Persona Explorer</span><h2>What the User Persona Engine actually found</h2>';
+  html += '<p class="sub">K-means (k='+(APP.k||4)+') run live on 9 standardized behavioral features, clusters auto-labeled by matching centroid signatures against playbook templates — this is the Persona Card Generation Agent\'s job, done here with rules instead of a live Claude call. Clusters that don\'t clear a minimum match score are labeled as emerging segments instead (dashed orange border below) — see the Data Flow tab to trigger discovery of a new one. Propensity model holdout AUC: <b>'+APP.personaModel.auc.toFixed(2)+'</b> (logistic regression, time-split validation).</p>';
+  html += '<div class="grid g2">';
+  cards.forEach(function(c){ html += renderPersonaCardHTML(c); });
+  html += '</div>';
+  html += '<div class="card" style="margin-top:16px;"><h3 style="margin-top:0;font-size:14px;">Cluster sizes</h3><canvas id="personaSizeChart"></canvas></div>';
+  document.getElementById('tab-personas').innerHTML = html;
+
+  var ctx = document.getElementById('personaSizeChart').getContext('2d');
+  if(APP.personaSizeChart) APP.personaSizeChart.destroy();
+  APP.personaSizeChart = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: cards.map(c=>c.name), datasets:[{ label:'Users', data: cards.map(c=>c.stats.n), backgroundColor:'#2a4fd6' }] },
+    options:{ plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true} } }
+  });
+}
+
+/* ============ NEW-SEGMENT DISCOVERY (re-clustering with a growing k) ============ */
+function extendBanditForNewPersonas(){
+  if(!APP.banditState) return;
+  APP.personaCards.forEach(function(c){
+    if(!APP.banditState.byPersona[c.key]){
+      APP.banditState.byPersona[c.key] = {counts:{}, sums:{}};
+      ARMS.forEach(function(a){ APP.banditState.byPersona[c.key].counts[a]=0; APP.banditState.byPersona[c.key].sums[a]=0; });
+    }
+  });
+}
+
+function runNewSegmentDiscovery(){
+  var newIds = injectNewBehaviorWave();
+  APP.k = (APP.k||4) + 1;
+  APP.personaModel = runUserPersonaEngine(APP.users, APP.k);
+
+  // find which cluster absorbed most of the newly injected users, and reserve
+  // that cluster for the emergent-segment composer (skip forcing it through
+  // the fixed 4-template matcher) -- this is what makes discovery deterministic
+  // for the demo rather than depending on exact centroid geometry each run.
+  var counts = {};
+  APP.users.forEach(function(u){
+    if(newIds.indexOf(u.user_id) >= 0){ counts[u.cluster] = (counts[u.cluster]||0) + 1; }
+  });
+  var forcedCluster = null, best = -1;
+  Object.keys(counts).forEach(function(c){ if(counts[c] > best){ best = counts[c]; forcedCluster = parseInt(c,10); } });
+
+  APP.personaCards = labelClusters(APP.users, APP.personaModel.centroids, forcedCluster!=null ? [forcedCluster] : []);
+  APP.lastDiscoveredCluster = forcedCluster;
+  extendBanditForNewPersonas();
+
+  renderDataFlow();
+  renderPersonas();
+  renderSales();
+  renderMessages();
+  renderBandit();
+}
+
+function renderDataFlow(){
+  var users = APP.users, cars = APP.cars, cards = APP.personaCards;
+  var k = APP.k || 4;
+  var newCard = (APP.lastDiscoveredCluster!=null) ? cards.find(c=>c.cluster===APP.lastDiscoveredCluster) : null;
+
+  var html = '<span class="tag">Data Flow &amp; Segmentation</span><h2>How a raw event turns into a segment, live</h2>';
+  html += '<p class="sub">This traces the exact path: six raw tables &rarr; one feature store &rarr; standardize + cluster &rarr; named segments &rarr; the RM Sales Panel and the engagement/messaging agent. Every box below reflects the data currently loaded in this page.</p>';
+
+  html += '<div class="flow-box"><b>1. Data Layer</b> — six raw tables, unified nightly into two serving tables<br>';
+  html += '<span class="flow-chip">user_events</span><span class="flow-chip">crm_leads</span><span class="flow-chip">engagement_log</span><span class="flow-chip">car_catalog</span><span class="flow-chip">call_log</span><span class="flow-chip">order_data</span>';
+  html += '<div class="small-muted" style="margin-top:6px;">In this demo: '+users.length+' synthetic users, '+cars.length+' synthetic cars.</div></div>';
+  html += '<div class="flow-arrow">&darr;</div>';
+
+  html += '<div class="flow-box"><b>2. Feature Store</b> (Step 0: nightly DAG, dbt-style transforms)<br>';
+  html += '<span class="small-muted">user_features_daily: '+users.length+' rows &times; '+FEATURE_KEYS.length+' behavioral features (session count, dwell time, filters, EMI opens, price-band variance, shortlist ratio, recency, trade-in flag, sort-by-price). car_features_current: '+cars.length+' rows with condition_score.</span></div>';
+  html += '<div class="flow-arrow">&darr;</div>';
+
+  html += '<div class="flow-box"><b>3. Standardize + Cluster</b> — k-means, currently k='+k+'<br>';
+  html += '<span class="small-muted">Every feature is z-scored against the population, then clustered. Cluster centroids are scored against four known playbook signatures; anything that doesn\'t clear a minimum match score is labeled as an emerging segment instead of forced into one of the four.</span></div>';
+  html += '<div class="flow-arrow">&darr;</div>';
+
+  html += '<div class="flow-box"><b>4. Named Segments</b> ('+cards.length+' active)<br>';
+  cards.forEach(function(c){
+    html += '<span class="flow-chip" style="'+(c.emergent?'background:#fff1de;color:#7a4a0a;':'')+'">'+c.icon+' '+c.name.replace('New Segment: ','')+' ('+c.stats.n+')'+(c.emergent?' 🆕':'')+'</span>';
+  });
+  html += '</div>';
+  html += '<div class="flow-arrow">&darr;</div>';
+
+  html += '<div class="flow-split">';
+  html += '<div class="flow-box"><b>5a. RM Sales Panel</b><br><span class="small-muted">Persona card + top-3 matched cars + pre-call briefing, looked up live by whichever cluster a lead falls into. New segments show up here automatically, no code change needed — see the Sales Panel tab.</span></div>';
+  html += '<div class="flow-box"><b>5b. Engagement / Messaging Agent</b><br><span class="small-muted">Adaptive bandit picks channel + time per persona; the Message Generation tab turns persona + matched car into WhatsApp/SMS/Push copy (template by default, or live via your own OpenAI/Claude key).</span></div>';
+  html += '</div>';
+
+  html += '<h3 style="margin-top:26px;">Segmentation lifecycle: how new segments get created</h3>';
+  html += '<p class="sub">Segments aren\'t a fixed list. Clustering re-runs on a schedule (weekly, per the proposal); when a fresh batch of behavior doesn\'t fit any existing playbook well, k grows and the new cluster gets described from its own centroid instead of being squeezed into one of the four originals. Click below to simulate ~70 new users arriving with a behavior pattern that doesn\'t exist in the current segment set, and watch the pipeline re-run.</p>';
+  html += '<div class="row"><button class="btn secondary" id="discoverBtn">Simulate new customer behavior &rarr; re-cluster</button><span class="small-muted" id="discoverStatus"></span></div>';
+
+  if(newCard){
+    html += '<div class="card" style="border-color:var(--orange);">';
+    html += '<div class="tag" style="background:#fff1de;color:var(--orange);">Just discovered</div>';
+    html += renderPersonaCardHTML(newCard);
+    html += '</div>';
+  }
+
+  document.getElementById('tab-dataflow').innerHTML = html;
+
+  document.getElementById('discoverBtn').addEventListener('click', function(){
+    var btn = document.getElementById('discoverBtn');
+    btn.disabled = true; btn.textContent = 'Re-clustering...';
+    setTimeout(function(){
+      runNewSegmentDiscovery();
+      document.getElementById('discoverStatus').textContent = APP.users.length+' users, k='+APP.k+' segments now.';
+    }, 50);
+  });
+}
+
+function driverBarHTML(d){
+  var pct = Math.min(100, d.weight*40);
+  return '<div style="margin-bottom:8px;"><div style="font-size:12.5px;">'+d.label+'</div>'+
+    '<div class="driver-bar"><div class="fill'+(d.positive?'':' neg')+'" style="width:'+pct+'%"></div></div></div>';
+}
+
+function renderSalesFor(userId){
+  var user = APP.users.find(u=>u.user_id===userId);
+  if(!user) return;
+  var card = APP.personaCards.find(c=>c.cluster===user.cluster);
+  var matches = matchCarsForUser(user, APP.cars, card.key);
+  var briefing = generateBriefing(user, card, matches);
+
+  var bestArm = null;
+  if(APP.banditState && APP.banditState.byPersona[card.key]){
+    var bp = APP.banditState.byPersona[card.key], bestAvg = -1;
+    ARMS.forEach(function(arm){
+      if(bp.counts[arm] > 0){ var avg = bp.sums[arm]/bp.counts[arm]; if(avg > bestAvg){ bestAvg = avg; bestArm = arm; } }
+    });
+  }
+
+  var html = '';
+  html += '<div class="card" style="margin-bottom:16px;">';
+  html += '<div class="small-muted" style="text-transform:uppercase;letter-spacing:.03em;font-weight:700;margin-bottom:6px;">Data flow for this lead</div>';
+  html += '<div>Raw signals (session count, EMI opens, shortlist ratio, trade-in flag...) &rarr; <b>cluster '+user.cluster+'</b> &rarr; '
+    + '<b>'+card.name+'</b>'+(card.emergent?' <span class="badge warn">newly discovered</span>':'')+' &rarr; '
+    + 'matched to <b>'+matches[0].car.make+' '+matches[0].car.model+'</b> &rarr; '
+    + (bestArm ? 'best learned channel: <b>'+bestArm+'</b>' : 'channel: <span class="small-muted">not enough bandit rounds yet - see Adaptive Engagement tab</span>')
+    + '</div>';
+  html += '<div class="row" style="margin-top:8px;margin-bottom:0;"><button class="btn secondary" id="jumpToMessagesBtn">Generate messages for this lead &rarr;</button></div>';
+  html += '</div>';
+
+  html += '<div class="grid g2">';
+
+  html += '<div class="card">';
+  html += '<div class="row" style="justify-content:space-between;margin-bottom:6px;">';
+  html += '<div><b>'+user.user_id+'</b><div class="small-muted">RM: '+user.rm_id+' · City tier '+user.city_tier+' · Budget '+user.declared_budget_band+'</div></div>';
+  html += '<div class="gauge-wrap"><div class="gauge" style="--pct:'+(user.propensity_score*100)+'"><span>'+fmtPct(user.propensity_score)+'</span></div><div class="small-muted">booking<br>propensity</div></div>';
+  html += '</div>';
+  html += renderPersonaCardHTML(card);
+  html += '<h4 style="margin:14px 0 6px;font-size:13px;color:var(--muted);text-transform:uppercase;">Top drivers (linear-SHAP style)</h4>';
+  user.top_drivers.forEach(function(d){ html += driverBarHTML(d); });
+  html += '</div>';
+
+  html += '<div class="card">';
+  html += '<h4 style="margin:0 0 8px;font-size:13px;color:var(--muted);text-transform:uppercase;">Matched cars</h4>';
+  matches.forEach(function(m){
+    html += '<div class="match-row"><div><div class="title">'+m.car.make+' '+m.car.model+' ('+m.car.variant+')</div>'+
+      '<div class="rationale">'+m.rationale+'. Condition '+m.car.condition_score+'/100 — '+conditionSummary(m.car)+'</div></div>'+
+      '<div class="price">₹'+m.car.price+'L</div></div>';
+  });
+  html += '<h4 style="margin:16px 0 8px;font-size:13px;color:var(--muted);text-transform:uppercase;">Pre-call briefing</h4>';
+  html += '<div class="brief-block"><b>Talking points</b>'+briefing.talkingPoints.map(t=>'• '+t).join('<br>')+'</div>';
+  html += '<div class="brief-block"><b>Objection handling</b>'+briefing.objection+'</div>';
+  html += '<div class="brief-block"><b>Suggested opening line</b>'+briefing.opening+'</div>';
+  html += '</div>';
+
+  html += '</div>';
+  document.getElementById('sales-detail').innerHTML = html;
+
+  var jumpBtn = document.getElementById('jumpToMessagesBtn');
+  if(jumpBtn){
+    jumpBtn.addEventListener('click', function(){
+      switchTab('messages');
+      var msgSel = document.getElementById('msgUserSelect');
+      if(msgSel){ msgSel.value = user.user_id; msgSel.dispatchEvent(new Event('change')); }
+    });
+  }
+}
+
+function renderSales(){
+  var users = APP.users;
+  var html = '<span class="tag">Sales Panel (RM view)</span><h2>Persona card + pre-call briefing, as an RM would see it</h2>';
+  html += '<p class="sub">Pick any lead to see the live output of the Matching Engine and the Pre-Call Briefing Agent for that specific person.</p>';
+  html += '<div class="row"><select id="userSelect"></select><button class="btn secondary" id="surpriseBtn">Surprise me</button></div>';
+  html += '<div id="sales-detail"></div>';
+  document.getElementById('tab-sales').innerHTML = html;
+
+  var sel = document.getElementById('userSelect');
+  users.forEach(function(u){
+    var card = APP.personaCards.find(c=>c.cluster===u.cluster);
+    var opt = document.createElement('option');
+    opt.value = u.user_id;
+    opt.textContent = u.user_id+' — '+(card?card.name:'')+' ('+fmtPct(u.propensity_score)+' propensity)';
+    sel.appendChild(opt);
+  });
+  sel.addEventListener('change', function(){ renderSalesFor(sel.value); });
+  document.getElementById('surpriseBtn').addEventListener('click', function(){
+    var u = users[Math.floor(Math.random()*users.length)];
+    sel.value = u.user_id;
+    renderSalesFor(u.user_id);
+  });
+  renderSalesFor(users[0].user_id);
+}
+
+function renderBanditArmTable(){
+  var cards = APP.personaCards;
+  var html = '<table><thead><tr><th>Persona</th><th>Best arm learned so far</th><th>Est. reward rate</th><th>Rounds seen</th></tr></thead><tbody>';
+  cards.forEach(function(c){
+    var p = APP.banditState.byPersona[c.key];
+    var best=null, bestAvg=-1, total=0;
+    ARMS.forEach(function(arm){
+      total += p.counts[arm];
+      if(p.counts[arm]>0){
+        var avg = p.sums[arm]/p.counts[arm];
+        if(avg>bestAvg){ bestAvg=avg; best=arm; }
+      }
+    });
+    html += '<tr><td>'+c.icon+' '+c.name+'</td><td>'+(best||'—')+'</td><td>'+(bestAvg>=0?fmtPct(bestAvg):'—')+'</td><td>'+total+'</td></tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('banditArmTable').innerHTML = html;
+}
+
+function updateBanditChart(){
+  var hist = APP.banditState.history;
+  var step = Math.max(1, Math.floor(hist.length/120));
+  var sampled = hist.filter(function(h,i){ return i%step===0; });
+  var ctx = document.getElementById('banditChart').getContext('2d');
+  if(APP.banditChart) APP.banditChart.destroy();
+  APP.banditChart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: sampled.map(h=>h.round),
+      datasets:[
+        { label:'Adaptive bandit (cumulative reward rate)', data: sampled.map(h=>h.banditRate), borderColor:'#2a4fd6', backgroundColor:'transparent', tension:0.15, pointRadius:0 },
+        { label:'Random send policy (baseline)', data: sampled.map(h=>h.randomRate), borderColor:'#c93030', backgroundColor:'transparent', tension:0.15, pointRadius:0, borderDash:[5,4] }
+      ]
+    },
+    options:{ scales:{ y:{ min:0, title:{display:true,text:'Booking-within-48h rate'} }, x:{ title:{display:true,text:'Rounds simulated'} } } }
+  });
+}
+
+function renderBandit(){
+  var html = '<span class="tag">Adaptive Engagement</span><h2>Contextual bandit, learning which channel + time actually books</h2>';
+  html += '<p class="sub">9 arms (3 channels × 3 time buckets), one UCB1 bandit per persona. Each simulated round samples a persona, the bandit picks an arm, and a booking-within-48h outcome is sampled from a hidden ground-truth rate — mirroring how the real system would learn from live send outcomes instead of open rates.</p>';
+  html += '<div class="row"><button class="btn" id="simBtn">Simulate 300 more rounds</button><button class="btn secondary" id="resetBtn">Reset bandit</button><span class="small-muted" id="roundsLabel"></span></div>';
+  html += '<div class="grid g2"><div class="card"><canvas id="banditChart"></canvas></div><div class="card" id="banditArmTable"></div></div>';
+  document.getElementById('tab-bandit').innerHTML = html;
+
+  var personaKeys = APP.personaCards.map(c=>c.key);
+  var weights = APP.personaCards.map(c=>c.stats.n);
+  if(!APP.banditState) APP.banditState = newBanditState(personaKeys);
+
+  function refreshLabel(){ document.getElementById('roundsLabel').textContent = APP.banditState.rounds+' rounds simulated so far'; }
+  document.getElementById('simBtn').addEventListener('click', function(){
+    runBanditRounds(APP.banditState, personaKeys, weights, 300);
+    updateBanditChart(); renderBanditArmTable(); refreshLabel();
+  });
+  document.getElementById('resetBtn').addEventListener('click', function(){
+    APP.banditState = newBanditState(personaKeys);
+    updateBanditChart(); renderBanditArmTable(); refreshLabel();
+  });
+  runBanditRounds(APP.banditState, personaKeys, weights, 300);
+  updateBanditChart(); renderBanditArmTable(); refreshLabel();
+}
+
+function renderArch(){
+  var html = '<span class="tag">How It\'s Built</span><h2>Four layers — what this prototype maps to</h2>';
+  html += '<p class="sub">Same architecture as the proposal, running here with synthetic stand-ins instead of live production tables.</p>';
+  html += '<div class="arch-layer" style="background:#2a4fd6;"><b>Interface Layer</b><span>This page: Sales Panel view, KPI dashboard. Production target: RM CRM view, WhatsApp/SMS/RCS/Push.</span></div>';
+  html += '<div class="arch-layer" style="background:var(--orange);"><b>Agent Layer</b><span>Persona Card Generation Agent + Pre-Call Briefing Agent, implemented here as deterministic templates over live model output — production version swaps templates for a Claude call over the same structured JSON.</span></div>';
+  html += '<div class="arch-layer" style="background:#2a4fd6;"><b>Model Layer</b><span>User Persona Engine (k-means + logistic propensity + linear-SHAP), Car Persona Engine (condition scoring), Matching Engine (weighted cosine-style scoring), Adaptive Engagement (per-persona UCB1 bandit).</span></div>';
+  html += '<div class="arch-layer" style="background:var(--navy2);"><b>Data Layer</b><span>Synthetic generators standing in for user_events, crm_leads, engagement_log, car_catalog, call_log, order_data.</span></div>';
+
+  html += '<div class="grid g2" style="margin-top:20px;">';
+  html += '<div class="card"><h3 style="margin-top:0;font-size:14px;">What\'s simplified vs. the full proposal</h3><table><tbody>'+
+    '<tr><td>HDBSCAN</td><td>→ k-means (k=4), no soft noise cluster</td></tr>'+
+    '<tr><td>XGBoost + SHAP</td><td>→ logistic regression + linear-SHAP-style contributions</td></tr>'+
+    '<tr><td>Two-tower neural matcher</td><td>→ weighted cosine-style scoring (the spec\'s own cold-start fallback)</td></tr>'+
+    '<tr><td>LinUCB with real context vector</td><td>→ UCB1 per persona (context = persona only)</td></tr>'+
+    '<tr><td>Claude-generated persona cards/briefings</td><td>→ deterministic templates driven by live cluster + match data</td></tr>'+
+    '</tbody></table></div>';
+  html += '<div class="card"><h3 style="margin-top:0;font-size:14px;">Six production tables (simulated)</h3><table><thead><tr><th>Table</th><th>Source</th><th>Cadence</th></tr></thead><tbody>'+
+    '<tr><td>user_events</td><td>App/Web SDK</td><td>Streaming → daily</td></tr>'+
+    '<tr><td>crm_leads</td><td>Sales Panel</td><td>Daily</td></tr>'+
+    '<tr><td>engagement_log</td><td>CleverTap</td><td>Daily</td></tr>'+
+    '<tr><td>car_catalog</td><td>Inventory DB</td><td>On update</td></tr>'+
+    '<tr><td>call_log</td><td>IVR platform</td><td>Daily</td></tr>'+
+    '<tr><td>order_data</td><td>Booking system</td><td>Real-time</td></tr>'+
+    '</tbody></table></div>';
+  html += '</div>';
+  document.getElementById('tab-arch').innerHTML = html;
+}
+
+/* ============ MESSAGE GENERATION AGENT (Content & Nudge Orchestration) ============ */
+var CHANNEL_SPECS = {
+  WhatsApp: { limit: 300, tone: 'warm and conversational, 2-3 short lines, one emoji is fine, ends with a clear test-drive booking CTA' },
+  SMS:      { limit: 160, tone: 'plain text only, no emoji, must fit a single SMS segment, ends with a short CTA' },
+  Push:     { limit: 60,  tone: 'ultra-short punchy hook, no emoji needed, curiosity-driven, tappable' }
+};
+
+function buildLLMPrompt(user, card, matchInfo, channel){
+  var spec = CHANNEL_SPECS[channel];
+  var car = matchInfo.car;
+  return "You are the Content & Nudge Orchestration Agent for Cars24, a used-car marketplace.\n"
+    + "Write ONE " + channel + " message (hard limit " + spec.limit + " characters, " + spec.tone + ") "
+    + "for a customer in the '" + card.name + "' segment: " + card.description + "\n"
+    + "Recommend this car: " + car.make + " " + car.model + " (" + car.variant + "), Rs " + car.price + "L, "
+    + "condition score " + car.condition_score + "/100. Why it's a match: " + matchInfo.rationale + ".\n"
+    + "Playbook guidance: " + card.playbook + "\n"
+    + "Output ONLY the message text, no quotes, no markdown, no explanation.";
+}
+
+function templateMessage(user, card, matchInfo, channel){
+  var car = matchInfo.car;
+  var shortReason = matchInfo.rationale.split(';')[0];
+  if(channel === 'WhatsApp'){
+    return "Hi! Based on what you've been browsing, the " + car.make + " " + car.model + " (" + car.variant + ") "
+      + "at Rs" + car.price + "L looks like a strong fit - " + shortReason + ". Want to lock in a test drive this week?";
+  }
+  if(channel === 'SMS'){
+    return "Cars24: " + car.make + " " + car.model + " " + car.variant + " - Rs" + car.price + "L. "
+      + shortReason + ". Book a test drive: cars24.com/td";
+  }
+  // Push
+  return car.make + " " + car.model + " just for you - " + shortReason + ". Tap to book a test drive.";
+}
+
+async function callOpenAI(prompt, apiKey, model){
+  var res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+    body: JSON.stringify({ model: model || 'gpt-4o-mini', messages: [{ role:'user', content: prompt }], max_tokens: 150 })
+  });
+  if(!res.ok){ throw new Error('OpenAI API error ' + res.status + ': ' + (await res.text()).slice(0,200)); }
+  var data = await res.json();
+  return data.choices[0].message.content.trim();
+}
+
+async function callAnthropic(prompt, apiKey, model){
+  var res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({ model: model || 'claude-3-5-haiku-20241022', max_tokens: 150, messages: [{ role:'user', content: prompt }] })
+  });
+  if(!res.ok){ throw new Error('Anthropic API error ' + res.status + ': ' + (await res.text()).slice(0,200)); }
+  var data = await res.json();
+  return data.content[0].text.trim();
+}
+
+function renderMessages(){
+  var users = APP.users;
+  var html = '<span class="tag">Message Generation (GPT-connected)</span><h2>Persona + matched car &rarr; channel-ready copy</h2>';
+  html += '<p class="sub">This is the Content &amp; Nudge Orchestration Agent from the architecture: it takes the persona card and the top matched car and writes channel-specific copy. By default it uses a deterministic template (no API key needed, works offline). Paste your own OpenAI or Anthropic key below to generate the same messages live, so you can see exactly what a real LLM call would produce.</p>';
+
+  html += '<div class="row"><select id="msgUserSelect"></select></div>';
+
+  html += '<div class="card" style="margin-bottom:16px;">';
+  html += '<div class="key-row">';
+  html += '<select id="llmProvider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic (Claude)</option></select>';
+  html += '<input type="text" id="llmModel" placeholder="model name">';
+  html += '<input type="password" id="llmApiKey" placeholder="Paste API key (kept in memory only, never saved)">';
+  html += '<button class="btn" id="genLiveBtn">Generate with template</button>';
+  html += '</div>';
+  html += '<div class="small-muted">Your API key never leaves this page and is never written to disk or localStorage - it lives in a JS variable for this session only, and is gone on reload. Live calls go straight from your browser to the provider\'s API; if the provider blocks direct browser requests (CORS), this will show an error and you\'ll still see the template version below.</div>';
+  html += '</div>';
+
+  html += '<div id="msg-cards"></div>';
+  document.getElementById('tab-messages').innerHTML = html;
+
+  var sel = document.getElementById('msgUserSelect');
+  users.forEach(function(u){
+    var card = APP.personaCards.find(c=>c.cluster===u.cluster);
+    var opt = document.createElement('option');
+    opt.value = u.user_id;
+    opt.textContent = u.user_id + ' - ' + (card?card.name:'');
+    sel.appendChild(opt);
+  });
+
+  var providerSel = document.getElementById('llmProvider');
+  var modelInput = document.getElementById('llmModel');
+  function updateModelPlaceholder(){
+    modelInput.placeholder = providerSel.value === 'openai' ? 'gpt-4o-mini' : 'claude-3-5-haiku-20241022';
+  }
+  updateModelPlaceholder();
+  providerSel.addEventListener('change', updateModelPlaceholder);
+
+  var apiKeyInput = document.getElementById('llmApiKey');
+  var genBtn = document.getElementById('genLiveBtn');
+  function updateGenBtnLabel(){ genBtn.textContent = apiKeyInput.value ? 'Generate live' : 'Generate with template'; }
+  apiKeyInput.addEventListener('input', updateGenBtnLabel);
+
+  function renderCardsFor(userId){
+    var user = APP.users.find(u=>u.user_id===userId);
+    var card = APP.personaCards.find(c=>c.cluster===user.cluster);
+    var matches = matchCarsForUser(user, APP.cars, card.key);
+    var top = { car: matches[0].car, rationale: matches[0].rationale };
+
+    var channels = ['WhatsApp', 'SMS', 'Push'];
+    var h = '';
+    channels.forEach(function(channel){
+      var prompt = buildLLMPrompt(user, card, top, channel);
+      var fallback = templateMessage(user, card, top, channel);
+      h += '<div class="msg-card" data-channel="'+channel+'">';
+      h += '<div class="chan">'+channel+' &middot; limit '+CHANNEL_SPECS[channel].limit+' chars</div>';
+      h += '<pre>'+prompt+'</pre>';
+      h += '<div class="output" data-role="output">'+fallback+'</div>';
+      h += '</div>';
+    });
+    document.getElementById('msg-cards').innerHTML = h;
+  }
+
+  sel.addEventListener('change', function(){ renderCardsFor(sel.value); });
+  renderCardsFor(users[0].user_id);
+
+  genBtn.addEventListener('click', async function(){
+    var apiKey = apiKeyInput.value.trim();
+    var provider = providerSel.value;
+    var model = modelInput.value.trim();
+    var cardEls = document.querySelectorAll('#msg-cards .msg-card');
+
+    for(var i=0;i<cardEls.length;i++){
+      var el = cardEls[i];
+      var channel = el.dataset.channel;
+      var prompt = el.querySelector('pre').textContent;
+      var outputEl = el.querySelector('[data-role="output"]');
+      var existingError = el.querySelector('.error');
+      if(existingError) existingError.remove();
+
+      if(!apiKey){ continue; } // template already showing
+      outputEl.textContent = 'Calling ' + provider + '...';
+      try{
+        var text = provider === 'openai'
+          ? await callOpenAI(prompt, apiKey, model)
+          : await callAnthropic(prompt, apiKey, model);
+        outputEl.textContent = text;
+      } catch(err){
+        var userId = document.getElementById('msgUserSelect').value;
+        var user = APP.users.find(u=>u.user_id===userId);
+        var card = APP.personaCards.find(c=>c.cluster===user.cluster);
+        var matches = matchCarsForUser(user, APP.cars, card.key);
+        var top = { car: matches[0].car, rationale: matches[0].rationale };
+        outputEl.textContent = templateMessage(user, card, top, channel);
+        var errDiv = document.createElement('div');
+        errDiv.className = 'error';
+        errDiv.textContent = 'Live call failed (' + err.message + ') - showing template instead.';
+        el.appendChild(errDiv);
+      }
+    }
+  });
+}
+
+/* ============ TAB SWITCHING + INIT ============ */
+function switchTab(name){
+  document.querySelectorAll('#tabs button').forEach(function(b){ b.classList.toggle('active', b.dataset.tab===name); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.id==='tab-'+name); });
+}
+
+function init(){
+  APP.users = generateUsers();
+  APP.cars = generateCars();
+  APP.k = 4;
+  APP.personaModel = runUserPersonaEngine(APP.users, APP.k);
+  APP.personaCards = labelClusters(APP.users, APP.personaModel.centroids);
+
+  renderOverview();
+  renderDataFlow();
+  renderPersonas();
+  renderSales();
+  renderMessages();
+  renderBandit();
+  renderArch();
+
+  document.querySelectorAll('#tabs button').forEach(function(b){
+    b.addEventListener('click', function(){ switchTab(b.dataset.tab); });
+  });
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
