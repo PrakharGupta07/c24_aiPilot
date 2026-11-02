@@ -108,6 +108,24 @@ footer{text-align:center;color:var(--muted);font-size:11.5px;padding:20px;}
 .note{background:#fff8ec;border:1px solid #f0dba8;color:#7a5b0a;border-radius:10px;padding:12px 14px;font-size:12.5px;margin-bottom:18px;}
 canvas{max-height:280px;}
 .small-muted{font-size:11.5px;color:var(--muted);}
+/* Pipeline & CleverTap loop tab */
+.loop{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:14px 0 6px;}
+.loop .step{background:#fff;border:1px solid var(--line);border-top:4px solid var(--blue);border-radius:10px;padding:10px 11px;font-size:12px;line-height:1.45;}
+.loop .step.ct{border-top-color:var(--orange);}
+.loop .step b{display:block;font-size:12.5px;color:var(--navy);margin-bottom:3px;}
+.loop .step .n{font-size:10.5px;font-weight:800;color:var(--muted);letter-spacing:.04em;}
+.loop-back{font-size:12px;color:var(--orange);font-weight:700;text-align:center;border:1.5px dashed var(--orange);border-radius:10px;padding:7px;margin-bottom:18px;}
+@media(max-width:900px){.loop{grid-template-columns:1fr 1fr;}}
+pre.json{background:#0e1b33;color:#d6def5;border-radius:8px;padding:10px 12px;font-size:11.5px;overflow-x:auto;margin:6px 0 0;line-height:1.45;}
+.gate{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px;}
+.gate:last-child{border-bottom:none;}
+.gate .res{font-weight:700;white-space:nowrap;}
+.gate .res.pass{color:var(--good);} .gate .res.stop{color:var(--bad);} .gate .res.info{color:var(--blue);}
+.timeline{border-left:3px solid var(--line);margin:8px 0 0 6px;padding-left:12px;font-size:12.5px;}
+.timeline div{margin:5px 0;}
+.timeline .t{font-weight:700;color:var(--navy);display:inline-block;min-width:74px;}
+h3.sec{font-size:15px;margin:26px 0 6px;}
+.grid > .card{min-width:0;}
 </style>
 </head>
 <body>
@@ -126,6 +144,7 @@ canvas{max-height:280px;}
 <nav id="tabs">
   <button data-tab="overview" class="active">Overview / Funnel</button>
   <button data-tab="dataflow">Data Flow &amp; Segmentation</button>
+  <button data-tab="pipeline">Pipeline &amp; CleverTap Loop</button>
   <button data-tab="personas">Persona Explorer</button>
   <button data-tab="sales">Sales Panel (RM view)</button>
   <button data-tab="messages">Message Generation (GPT)</button>
@@ -139,6 +158,7 @@ canvas{max-height:280px;}
 
 <div id="tab-overview" class="tab active"></div>
 <div id="tab-dataflow" class="tab"></div>
+<div id="tab-pipeline" class="tab"></div>
 <div id="tab-personas" class="tab"></div>
 <div id="tab-sales" class="tab"></div>
 <div id="tab-messages" class="tab"></div>
@@ -859,6 +879,7 @@ function runNewSegmentDiscovery(){
   renderSales();
   renderMessages();
   renderBandit();
+  renderPipeline();
 }
 
 function renderDataFlow(){
@@ -1077,7 +1098,7 @@ function renderBandit(){
 function renderArch(){
   var html = '<span class="tag">How It\'s Built</span><h2>Four layers — what this prototype maps to</h2>';
   html += '<p class="sub">Same architecture as the proposal, running here with synthetic stand-ins instead of live production tables.</p>';
-  html += '<div class="arch-layer" style="background:#2a4fd6;"><b>Interface Layer</b><span>This page: Sales Panel view, KPI dashboard. Production target: RM CRM view, WhatsApp/SMS/RCS/Push.</span></div>';
+  html += '<div class="arch-layer" style="background:#2a4fd6;"><b>Interface Layer</b><span>This page: Sales Panel view, KPI dashboard. Production target: RM CRM view, WhatsApp/SMS/RCS/Push delivered by CleverTap, which receives persona, propensity band and next channel/time as profile properties (see the Pipeline &amp; CleverTap Loop tab).</span></div>';
   html += '<div class="arch-layer" style="background:var(--orange);"><b>Agent Layer</b><span>Persona Card Generation Agent + Pre-Call Briefing Agent, implemented here as deterministic templates over live model output — production version swaps templates for a Claude call over the same structured JSON.</span></div>';
   html += '<div class="arch-layer" style="background:#2a4fd6;"><b>Model Layer</b><span>User Persona Engine (k-means + logistic propensity + linear-SHAP), Car Persona Engine (condition scoring), Matching Engine (weighted cosine-style scoring), Adaptive Engagement (per-persona UCB1 bandit).</span></div>';
   html += '<div class="arch-layer" style="background:var(--navy2);"><b>Data Layer</b><span>Synthetic generators standing in for user_events, crm_leads, engagement_log, car_catalog, call_log, order_data.</span></div>';
@@ -1265,6 +1286,282 @@ function renderMessages(){
   });
 }
 
+/* ============ PIPELINE & CLEVERTAP LOOP ============
+   How data moves: SDK events -> warehouse -> feature store -> models -> decision gates
+   -> write-back to CleverTap (profile properties + External Trigger) -> delivery
+   -> CleverTap engagement events + booking data come back -> bandit reward -> next decision. */
+
+var CT_BASE = 'https://in1.api.clevertap.com'; // India region endpoint
+var TIME_WINDOWS = { Morning:'09:00-12:00 IST', Afternoon:'13:00-17:00 IST', Evening:'18:00-21:00 IST' };
+var FREQ_CAP_PER_WEEK = 3;
+var HOLDOUT_PCT = 10;
+var MODEL_VERSION = 'persona-v'+new Date().toISOString().slice(0,10).replace(/-/g,'');
+
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function hashStr(s){ var h=0; for(var i=0;i<s.length;i++){ h=((h<<5)-h)+s.charCodeAt(i); h|=0; } return Math.abs(h); }
+function experimentGroup(userId){ return (hashStr(userId) % 100) < HOLDOUT_PCT ? 'control' : 'treatment'; }
+function quantile(arr, q){ var a=arr.slice().sort(function(x,y){return x-y;}); var i=Math.min(a.length-1, Math.floor(q*a.length)); return a[i]; }
+
+function propensityBands(){
+  var scores = APP.users.map(function(u){ return u.propensity_score; });
+  return { hi: quantile(scores, 0.70), lo: quantile(scores, 0.30) };
+}
+function bandFor(p, bands){ return p>=bands.hi ? 'high' : (p<=bands.lo ? 'low' : 'mid'); }
+
+function bestLearnedArm(personaKey){
+  var bp = APP.banditState && APP.banditState.byPersona[personaKey];
+  if(!bp) return null;
+  var best=null, bestAvg=-1;
+  ARMS.forEach(function(arm){ if(bp.counts[arm]>0){ var a=bp.sums[arm]/bp.counts[arm]; if(a>bestAvg){ bestAvg=a; best=arm; } } });
+  return best ? { arm:best, rate:bestAvg, n:bp.counts[best] } : null;
+}
+
+// Simulated per-user send history for the frequency-cap gate (stand-in for engagement_log, last 7 days)
+function sendsLast7d(user){ return hashStr(user.user_id+'f') % 5; }
+
+function decideForUser(user){
+  var card = APP.personaCards.find(function(c){ return c.cluster===user.cluster; });
+  var matches = matchCarsForUser(user, APP.cars, card.key);
+  var bands = propensityBands();
+  var band = bandFor(user.propensity_score, bands);
+  var group = experimentGroup(user.user_id);
+  var sent7 = sendsLast7d(user);
+  var learned = bestLearnedArm(card.key);
+  var ucbArm = APP.banditState && APP.banditState.byPersona[card.key] ? banditChooseArm(APP.banditState, card.key) : null;
+
+  var gates = [];
+  gates.push({ name:'Consent: user has not opted out', ok: !user.opted_out, res: user.opted_out ? 'Suppress all sends' : 'Pass' });
+  gates.push({ name:'Experiment group (hash of user_id, '+HOLDOUT_PCT+'% holdout)', ok: true, info:true, res: group==='control' ? 'Control: stays on current CleverTap rules' : 'Treatment' });
+  gates.push({ name:'Frequency cap: max '+FREQ_CAP_PER_WEEK+' nudges in 7 days (has '+sent7+')', ok: sent7 < FREQ_CAP_PER_WEEK, res: sent7 < FREQ_CAP_PER_WEEK ? 'Pass' : 'Hold until cap resets' });
+  gates.push({ name:'Propensity band (cut-offs: today\'s 30th / 70th percentile = '+fmtPct(bands.lo)+' / '+fmtPct(bands.hi)+')', ok:true, info:true, res: band.toUpperCase()+' ('+fmtPct(user.propensity_score)+')' });
+
+  var action;
+  if(user.opted_out) action = 'No message. Profile still updated so the RM sees the persona card.';
+  else if(group==='control') action = 'Write persona properties for measurement only; CleverTap keeps sending on today\'s rules.';
+  else if(sent7 >= FREQ_CAP_PER_WEEK) action = 'Skip this cycle; re-evaluate after the cap window.';
+  else if(band==='high') action = 'Priority: push to top of '+user.rm_id+'\'s Sales Panel queue with pre-call brief, plus a bandit-chosen nudge.';
+  else if(band==='mid') action = 'Bandit-chosen nudge (channel + time) with the matched car. No RM call yet.';
+  else action = 'Low-cost nurture only: weekly Push with condition-forward content. No RM time spent.';
+
+  var sendOk = !user.opted_out && group==='treatment' && sent7 < FREQ_CAP_PER_WEEK && band!=='low';
+  var arm = ucbArm || (learned && learned.arm) || 'WhatsApp · Evening';
+  return { card:card, matches:matches, band:band, bands:bands, group:group, gates:gates, action:action, sendOk:sendOk, arm:arm, learned:learned };
+}
+
+function ctProfilePayload(user, d){
+  var top = d.matches[0].car;
+  var parts = d.arm.split(' · ');
+  var props = {
+    c24_persona: d.card.name.replace('New Segment: ',''),
+    c24_persona_key: d.card.key,
+    c24_propensity_score: Math.round(user.propensity_score*1000)/1000,
+    c24_propensity_band: d.band,
+    c24_top_car_id: top.car_id,
+    c24_top_car_label: top.make+' '+top.model+' '+top.variant,
+    c24_top_car_price_l: top.price,
+    c24_match_reason: d.matches[0].rationale.split(';')[0],
+    c24_next_channel: parts[0],
+    c24_next_time_bucket: parts[1],
+    c24_experiment_group: d.group,
+    c24_rm_id: user.rm_id,
+    c24_model_version: MODEL_VERSION,
+    c24_scored_at: '$D_'+Math.floor(Date.now()/1000)
+  };
+  if(d.card.key==='dealhunter') props.c24_price_ceiling_l = BUDGET_RANGE[user.declared_budget_band][1];
+  return { d: [ { identity: user.user_id, type: 'profile', profileData: props } ] };
+}
+
+function ctTriggerPayload(user, d){
+  var top = d.matches[0].car;
+  var parts = d.arm.split(' · ');
+  return {
+    to: { identity: [ user.user_id ] },
+    campaign_id: 'CT_TD_'+parts[0].toUpperCase()+'_'+d.card.key.toUpperCase(),
+    ExternalTrigger: {
+      car_label: top.make+' '+top.model+' ('+top.variant+')',
+      price_l: String(top.price),
+      reason: d.matches[0].rationale.split(';')[0],
+      condition_score: String(top.condition_score),
+      cta_url: 'https://www.cars24.com/td?car='+top.car_id+'&utm_source=copilot&utm_content='+encodeURIComponent(d.arm)
+    }
+  };
+}
+
+function renderPipeline(){
+  var users = APP.users;
+  var html = '<span class="tag">Pipeline &amp; CleverTap Loop</span><h2>How data flows, what decides each step, and how results flow back to CleverTap</h2>';
+  html += '<p class="sub">CleverTap stays the delivery engine. The Co-Pilot sits upstream: it reads behaviour, decides who gets what and when, writes that decision back into CleverTap as profile properties and API triggers, then learns from what CleverTap and the booking system report back. Everything below runs on this page\'s live synthetic data.</p>';
+
+  // ---- loop diagram
+  html += '<div class="loop">';
+  html += '<div class="step ct"><span class="n">1 · CAPTURE</span><b>App / Web SDK</b>Events (listing view, filters, EMI open, shortlist) go to CleverTap in real time and to the warehouse as <code>user_events</code>.</div>';
+  html += '<div class="step"><span class="n">2 · UNIFY</span><b>Nightly DAG, 02:00</b>Six tables land raw, dbt joins them into <code>user_features_daily</code> (7/30/90-day windows) and <code>car_features_current</code>. Quality gate runs before any model.</div>';
+  html += '<div class="step"><span class="n">3 · SCORE</span><b>Models</b>Cluster weekly, propensity daily, match cars daily, bandit picks channel + time per persona.</div>';
+  html += '<div class="step"><span class="n">4 · DECIDE</span><b>Decision gates</b>Consent → holdout → frequency cap → propensity band → action. Rules below.</div>';
+  html += '<div class="step ct"><span class="n">5 · WRITE BACK</span><b>CleverTap + Sales Panel</b>Profile properties via <code>/1/upload</code> (batches of 1,000). Real-time nudges via External Trigger. Brief to Sales Panel API.</div>';
+  html += '<div class="step ct"><span class="n">6 · DELIVER + LEARN</span><b>Send, then measure</b>CleverTap sends in the chosen window. Sent/viewed/clicked events + <code>order_data</code> bookings come back as the bandit\'s reward.</div>';
+  html += '</div>';
+  html += '<div class="loop-back">&#8634; Step 6 feeds step 2: engagement and booking outcomes are tomorrow\'s training data and today\'s bandit update</div>';
+
+  // ---- logic table
+  html += '<h3 class="sec">The logic at each step</h3>';
+  html += '<div class="card" style="overflow-x:auto;"><table><thead><tr><th>Step</th><th>Input</th><th>Logic</th><th>Output</th><th>Cadence</th><th>If it fails</th></tr></thead><tbody>';
+  html += '<tr><td><b>Capture</b></td><td>SDK events, Sales Panel, IVR, inventory, bookings</td><td>Same <code>identity</code> (user_id, phone at login) on every source so rows join</td><td>6 raw tables</td><td>Streaming / daily</td><td>Late data: run on last good partition, flag staleness</td></tr>';
+  html += '<tr><td><b>Unify</b></td><td>6 raw tables</td><td>Join on user_id; aggregate 7/30/90-day windows; null-rate, volume-anomaly and 50-row spot checks</td><td>'+users.length+' rows × '+FEATURE_KEYS.length+' features; '+APP.cars.length+' car rows</td><td>Nightly</td><td>Gate fails: models don\'t run, yesterday\'s scores stay live</td></tr>';
+  html += '<tr><td><b>Score</b></td><td>Feature store</td><td>z-score → k-means (k='+(APP.k||4)+'); logistic propensity, target = TD booked in 7 days (AUC '+APP.personaModel.auc.toFixed(2)+'); weighted matching per persona</td><td>cluster, persona, propensity, top-3 drivers, top-3 cars</td><td>Cluster weekly, score daily</td><td>Model error: keep last version (<code>c24_model_version</code>)</td></tr>';
+  html += '<tr><td><b>Decide</b></td><td>Scores + engagement_log</td><td>Opt-out → suppress. '+HOLDOUT_PCT+'% holdout by hash(user_id). Cap '+FREQ_CAP_PER_WEEK+' nudges / 7 days. Band by today\'s 30th/70th percentile. High → RM priority + nudge; mid → nudge; low → weekly nurture</td><td>One action per user per day</td><td>Daily + on event</td><td>Default to current CleverTap rules</td></tr>';
+  html += '<tr><td><b>Write back</b></td><td>Decision</td><td>Batch: <code>POST /1/upload</code>, type=profile, ≤1,000 records per call. Real time: <code>POST /1/send/externaltrigger.json</code> with campaign_id + personalisation. Idempotent: same scored_at overwrites, never duplicates</td><td>CleverTap profile props, triggered campaigns, Sales Panel cards</td><td>After nightly run; event-driven</td><td>Retry with backoff; log unprocessed records from the response</td></tr>';
+  html += '<tr><td><b>Learn</b></td><td>CleverTap engagement export + order_data</td><td>Reward = 1 if <code>test_drive_booked</code> within 48h of send, else 0. Update the chosen arm for that persona. Clicks logged but not rewarded</td><td>Updated bandit estimates; next day\'s training rows</td><td>Micro-batch every few hours</td><td>Missing export: hold updates, never reward on partial data</td></tr>';
+  html += '</tbody></table></div>';
+
+  // ---- what CleverTap holds
+  html += '<h3 class="sec">What gets written into CleverTap, and how campaigns use it</h3>';
+  html += '<div class="grid g2">';
+  html += '<div class="card"><table><thead><tr><th>Profile property</th><th>Used for</th></tr></thead><tbody>'+
+    '<tr><td><code>c24_persona</code></td><td>Segment + creative variant per persona</td></tr>'+
+    '<tr><td><code>c24_propensity_band</code></td><td>Who gets RM time vs a nudge vs nurture</td></tr>'+
+    '<tr><td><code>c24_next_channel</code>, <code>c24_next_time_bucket</code></td><td>Bandit\'s pick for the next send (includes ~10% exploration): which campaign and window</td></tr>'+
+    '<tr><td><code>c24_top_car_*</code>, <code>c24_match_reason</code></td><td>Personalisation tokens in the message</td></tr>'+
+    '<tr><td><code>c24_price_ceiling_l</code></td><td>Deal Hunter financing nudge at their number</td></tr>'+
+    '<tr><td><code>c24_experiment_group</code></td><td>Keeps control users on today\'s rules</td></tr>'+
+    '<tr><td><code>c24_model_version</code>, <code>c24_scored_at</code></td><td>Audit trail; stale-score suppression</td></tr>'+
+    '</tbody></table></div>';
+  html += '<div class="card"><b style="font-size:13px;">Campaign setup inside CleverTap</b><ul style="font-size:12.5px;line-height:1.6;padding-left:18px;margin:8px 0 0;">'+
+    '<li>One segment per channel × time bucket, e.g. <i>c24_next_channel = WhatsApp AND c24_next_time_bucket = Evening AND c24_propensity_band != low AND c24_experiment_group = treatment</i>. Nine segments map to the bandit\'s nine arms; a tenth (<i>c24_propensity_band = low</i>) gets the weekly nurture Push.</li>'+
+    '<li>Scheduled campaigns per segment inside its window ('+TIME_WINDOWS.Morning+', '+TIME_WINDOWS.Afternoon+', '+TIME_WINDOWS.Evening+'), copy varied by <code>c24_persona</code>.</li>'+
+    '<li>External Trigger campaigns for moments that can\'t wait: price drop on a shortlisted car, TD slot viewed but not booked.</li>'+
+    '<li>Global frequency cap and DND/quiet hours stay on in CleverTap as a second safety net.</li>'+
+    '<li>Control group keeps the existing journeys untouched, so the holdout comparison is clean.</li>'+
+    '</ul></div>';
+  html += '</div>';
+
+  // ---- live trace
+  html += '<h3 class="sec">Trace one lead end to end</h3>';
+  html += '<p class="sub" style="margin-bottom:10px;">Pick a lead to see its decision gates and the exact payloads that would go to CleverTap. Then simulate the send: the outcome flows back and updates the bandit used on the Adaptive Engagement tab.</p>';
+  html += '<div class="row"><select id="pipeUserSelect"></select><button class="btn secondary" id="pipeSurprise">Surprise me</button></div>';
+  html += '<div id="pipe-detail"></div>';
+
+  // ---- identity & guardrails
+  html += '<h3 class="sec">Identity, privacy and failure handling</h3>';
+  html += '<div class="grid g3">';
+  html += '<div class="card" style="font-size:12.5px;"><b>Identity</b><br>Every write uses the same <code>identity</code> CleverTap already holds for the user. If it doesn\'t match, CleverTap creates a new anonymous profile and targeting silently breaks, so the job reports unmatched identities daily and skips them.</div>';
+  html += '<div class="card" style="font-size:12.5px;"><b>Privacy (DPDP)</b><br>Only labels and scores go to CleverTap: no raw features, call transcripts or financial details. Persona names are internal and never shown to the user. Opt-outs sync both ways.</div>';
+  html += '<div class="card" style="font-size:12.5px;"><b>Failure modes</b><br>If the nightly run, the upload or the export fails, the system falls back to yesterday\'s properties or today\'s CleverTap rules. It never sends on stale scores past 48h (<code>c24_scored_at</code> check).</div>';
+  html += '</div>';
+
+  document.getElementById('tab-pipeline').innerHTML = html;
+
+  var sel = document.getElementById('pipeUserSelect');
+  users.forEach(function(u){
+    var card = APP.personaCards.find(function(c){ return c.cluster===u.cluster; });
+    var opt = document.createElement('option');
+    opt.value = u.user_id;
+    opt.textContent = u.user_id+' — '+(card?card.name:'')+' ('+fmtPct(u.propensity_score)+')';
+    sel.appendChild(opt);
+  });
+  var pb = propensityBands();
+  sel.addEventListener('change', function(){ renderPipelineFor(sel.value); });
+  document.getElementById('pipeSurprise').addEventListener('click', function(){
+    var cands = users.filter(function(u){ return !u.opted_out && experimentGroup(u.user_id)==='treatment' && sendsLast7d(u) < FREQ_CAP_PER_WEEK && u.propensity_score > pb.lo; });
+    var u = cands[Math.floor(Math.random()*cands.length)] || users[0];
+    sel.value = u.user_id; renderPipelineFor(u.user_id);
+  });
+  var first = users.find(function(u){ return !u.opted_out && experimentGroup(u.user_id)==='treatment' && sendsLast7d(u) < FREQ_CAP_PER_WEEK && u.propensity_score > pb.lo; }) || users[0];
+  sel.value = first.user_id;
+  renderPipelineFor(first.user_id);
+}
+
+function renderPipelineFor(userId, lastOutcome){
+  var user = APP.users.find(function(u){ return u.user_id===userId; });
+  if(!user) return;
+  var d = decideForUser(user);
+  var featureRow = { user_id:user.user_id };
+  FEATURE_KEYS.forEach(function(k){ featureRow[k] = typeof user[k]==='number' ? Math.round(user[k]*100)/100 : user[k]; });
+  featureRow.declared_budget_band = user.declared_budget_band;
+  featureRow.city_tier = user.city_tier;
+
+  var h = '<div class="grid g2">';
+  h += '<div class="card"><b style="font-size:13px;">A. Feature row (user_features_daily)</b><pre class="json">'+escapeHtml(JSON.stringify(featureRow, null, 2))+'</pre></div>';
+  h += '<div class="card"><b style="font-size:13px;">B. Model outputs</b>';
+  h += '<div class="gate"><span>Cluster → persona</span><span class="res info">'+user.cluster+' → '+escapeHtml(d.card.name)+'</span></div>';
+  h += '<div class="gate"><span>Booking propensity (7 days)</span><span class="res info">'+fmtPct(user.propensity_score)+'</span></div>';
+  user.top_drivers.forEach(function(dr, i){ h += '<div class="gate"><span>Driver '+(i+1)+'</span><span class="res">'+escapeHtml(dr.label)+'</span></div>'; });
+  h += '<div class="gate"><span>Top matched car</span><span class="res">'+escapeHtml(d.matches[0].car.make+' '+d.matches[0].car.model+' · ₹'+d.matches[0].car.price+'L')+'</span></div>';
+  h += '<div class="gate"><span>Bandit arm for next send (UCB)</span><span class="res info">'+escapeHtml(d.arm)+'</span></div>';
+  h += '<div class="gate"><span>Best learned arm so far</span><span class="res">'+(d.learned ? escapeHtml(d.learned.arm)+' ('+fmtPct(d.learned.rate)+', n='+d.learned.n+')' : '—')+'</span></div>';
+  h += '</div></div>';
+
+  h += '<div class="card" style="margin-top:16px;"><b style="font-size:13px;">C. Decision gates</b>';
+  d.gates.forEach(function(g){ h += '<div class="gate"><span>'+escapeHtml(g.name)+'</span><span class="res '+(g.info?'info':(g.ok?'pass':'stop'))+'">'+escapeHtml(g.res)+'</span></div>'; });
+  h += '<div class="brief-block" style="margin-top:10px;"><b>Action</b>'+escapeHtml(d.action)+'</div></div>';
+
+  h += '<div class="grid g2" style="margin-top:16px;">';
+  h += '<div class="card"><b style="font-size:13px;">D1. Nightly profile write-back</b><div class="small-muted">POST '+CT_BASE+'/1/upload · headers X-CleverTap-Account-Id, X-CleverTap-Passcode · up to 1,000 profiles per call</div><pre class="json">'+escapeHtml(JSON.stringify(ctProfilePayload(user, d), null, 2))+'</pre></div>';
+  h += '<div class="card"><b style="font-size:13px;">D2. Real-time trigger</b><div class="small-muted">POST '+CT_BASE+'/1/send/externaltrigger.json · only for event-driven moments, and only if every gate passed</div>';
+  h += d.sendOk ? '<pre class="json">'+escapeHtml(JSON.stringify(ctTriggerPayload(user, d), null, 2))+'</pre>' : '<div class="note" style="margin:8px 0 0;">'+(d.band==='low' && !user.opted_out && d.group==='treatment' ? 'No trigger: low-band users aren\'t worth an event-driven nudge. They are picked up by the weekly nurture campaign on the segment c24_propensity_band = low.' : 'No trigger: a gate above stopped the send. The profile is still written so the persona card reaches the RM and measurement stays complete.')+'</div>';
+  h += '</div></div>';
+
+  h += '<div class="card" style="margin-top:16px;"><b style="font-size:13px;">E. Flow back: delivery → outcome → bandit update</b>';
+  if(d.sendOk){
+    h += '<div class="row" style="margin:10px 0 0;"><button class="btn" id="pipeSimBtn">Simulate send via CleverTap + 48h outcome</button></div>';
+  } else {
+    h += '<div class="small-muted" style="margin-top:6px;">Pick a treatment-group lead in the mid or high band that passes the gates to simulate a send (or tap Surprise me).</div>';
+  }
+  if(lastOutcome){
+    var o = lastOutcome;
+    h += '<div class="timeline">';
+    h += '<div><span class="t">T+0</span>CleverTap system event <b>Notification Sent</b> · channel '+escapeHtml(o.channel)+' · window '+escapeHtml(TIME_WINDOWS[o.bucket])+'</div>';
+    h += '<div><span class="t">T+'+o.viewMin+'m</span>'+(o.viewed?'<b>Notification Viewed</b>':'Not viewed')+'</div>';
+    h += '<div><span class="t">T+'+(o.viewMin+4)+'m</span>'+(o.clicked?'<b>Notification Clicked</b> → car page '+escapeHtml(o.carId):'No click')+'</div>';
+    h += '<div><span class="t">≤ T+48h</span>'+(o.reward?'<b style="color:var(--good)">order_data: test_drive_booked = 1</b>':'No test-drive booking in 48h')+'</div>';
+    h += '</div>';
+    h += '<div class="grid g2" style="margin-top:12px;">';
+    h += '<div><div class="small-muted">engagement_log row, joined with order_data</div><pre class="json">'+escapeHtml(JSON.stringify(o.logRow, null, 2))+'</pre></div>';
+    h += '<div><div class="small-muted">Bandit update for persona <b>'+escapeHtml(o.persona)+'</b>, arm <b>'+escapeHtml(o.arm)+'</b></div>';
+    h += '<div class="gate"><span>Reward used</span><span class="res '+(o.reward?'pass':'stop')+'">'+o.reward+' (booking, not click)</span></div>';
+    h += '<div class="gate"><span>Arm sends</span><span class="res">'+o.before.n+' → '+o.after.n+'</span></div>';
+    h += '<div class="gate"><span>Arm booking rate estimate</span><span class="res">'+fmtPct(o.before.rate)+' → '+fmtPct(o.after.rate)+'</span></div>';
+    h += '<div class="gate"><span>Next arm the bandit would pick</span><span class="res info">'+escapeHtml(o.nextArm)+'</span></div>';
+    h += '<div class="small-muted" style="margin-top:6px;">Tonight\'s write-back sends the new pick as <code>c24_next_channel</code> / <code>c24_next_time_bucket</code>, which moves the user into a different CleverTap segment if the arm changed.</div>';
+    h += '</div></div>';
+  }
+  h += '</div>';
+
+  document.getElementById('pipe-detail').innerHTML = h;
+
+  var simBtn = document.getElementById('pipeSimBtn');
+  if(simBtn){
+    simBtn.addEventListener('click', function(){
+      var st = APP.banditState, pk = d.card.key, arm = d.arm;
+      var bp = st.byPersona[pk];
+      var before = { n: bp.counts[arm], rate: bp.counts[arm] ? bp.sums[arm]/bp.counts[arm] : 0 };
+      var reward = rand() < trueReward(pk, arm) ? 1 : 0;
+      var clicked = reward ? true : rand() < 0.18;
+      var viewed = clicked || rand() < 0.6;
+      bp.counts[arm]++; bp.sums[arm] += reward;
+      st.cumReward += reward;
+      var rArm = pick(ARMS); st.cumRewardRandom += (rand() < trueReward(pk, rArm) ? 1 : 0);
+      st.rounds++;
+      st.history.push({ round: st.rounds, banditRate: st.cumReward/st.rounds, randomRate: st.cumRewardRandom/st.rounds });
+      var after = { n: bp.counts[arm], rate: bp.sums[arm]/bp.counts[arm] };
+      var parts = arm.split(' · ');
+      var outcome = {
+        persona: d.card.name, arm: arm, channel: parts[0], bucket: parts[1], carId: d.matches[0].car.car_id,
+        viewed: viewed, clicked: clicked, reward: reward, viewMin: 2 + Math.floor(rand()*40),
+        before: before, after: after, nextArm: banditChooseArm(st, pk),
+        logRow: {
+          message_id: 'M'+Math.floor(rand()*1e8), user_id: user.user_id, channel: parts[0], time_bucket: parts[1],
+          campaign_id: 'CT_TD_'+parts[0].toUpperCase()+'_'+pk.toUpperCase(), persona_key: pk,
+          opened: viewed ? 1 : 0, clicked: clicked ? 1 : 0, test_drive_booked_48h: reward,
+          model_version: MODEL_VERSION
+        }
+      };
+      renderPipelineFor(user.user_id, outcome);
+      if(document.getElementById('banditChart')){ updateBanditChart(); renderBanditArmTable(); var lbl=document.getElementById('roundsLabel'); if(lbl) lbl.textContent = st.rounds+' rounds simulated so far'; }
+    });
+  }
+}
+
 /* ============ TAB SWITCHING + INIT ============ */
 function switchTab(name){
   document.querySelectorAll('#tabs button').forEach(function(b){ b.classList.toggle('active', b.dataset.tab===name); });
@@ -1284,6 +1581,7 @@ function init(){
   renderSales();
   renderMessages();
   renderBandit();
+  renderPipeline();
   renderArch();
 
   document.querySelectorAll('#tabs button').forEach(function(b){
